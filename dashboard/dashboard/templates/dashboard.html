@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Overview - Developer Productivity Dashboard{% endblock %}
+
+{% block content %}
+<h1>Dashboard Overview</h1>
+
+{% if db_error %}
+<article style="background: #fef2f2; border-left: 4px solid #ef4444;">
+    <h3 style="color: #dc2626;">Database Connection Error</h3>
+    <p>{{ db_error }}</p>
+    <p>Make sure to set the following environment variables:</p>
+    <pre><code>DB_HOST=your_rds_host
+DB_PORT=5432
+DB_NAME=claude_logs
+DB_USER=claude_admin
+DB_PASSWORD=your_password</code></pre>
+</article>
+{% endif %}
+
+<form class="filters" method="get">
+    <div>
+        <label for="days">Time Range</label>
+        <select name="days" id="days">
+            <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 days</option>
+            <option value="14" {% if days == 14 %}selected{% endif %}>Last 14 days</option>
+            <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+            <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+        </select>
+    </div>
+</form>
+
+{% if summary %}
+<div class="metrics-grid">
+    <div class="card">
+        <h3>Total PRs</h3>
+        <div class="value">{{ summary.total_prs }}</div>
+    </div>
+    <div class="card">
+        <h3>Merged PRs</h3>
+        <div class="value">{{ summary.merged_prs }}</div>
+    </div>
+    <div class="card">
+        <h3>Open PRs</h3>
+        <div class="value">{{ summary.open_prs }}</div>
+    </div>
+    <div class="card">
+        <h3>Avg Cycle Time</h3>
+        <div class="value">{{ format_hours(summary.avg_cycle_time_hours) }}</div>
+    </div>
+    <div class="card">
+        <h3>Active Contributors</h3>
+        <div class="value">{{ summary.unique_authors }}</div>
+    </div>
+</div>
+{% endif %}
+
+{% if repos %}
+<h2>Tracked Repositories</h2>
+<ul>
+{% for repo in repos %}
+    <li><a href="/velocity?repo={{ repo }}">{{ repo }}</a></li>
+{% endfor %}
+</ul>
+{% else %}
+<article>
+    <h3>No data yet</h3>
+    <p>Configure your GitHub repos and token to start syncing PR data.</p>
+    <p>Set the following environment variables:</p>
+    <pre><code>GITHUB_TOKEN=ghp_your_token_here
+GITHUB_REPOS=owner/repo1,owner/repo2</code></pre>
+</article>
+{% endif %}
+
+<h2>Quick Links</h2>
+<div class="grid">
+    <a href="/velocity" role="button">View Shipping Velocity</a>
+    <a href="/cycle-time" role="button" class="secondary">View Cycle Time Breakdown</a>
+</div>
+{% endblock %}

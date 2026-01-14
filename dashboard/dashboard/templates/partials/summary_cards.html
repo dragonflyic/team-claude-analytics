@@ -1,0 +1,22 @@
+<div class="metrics-grid">
+    <div class="card">
+        <h3>Total PRs</h3>
+        <div class="value">{{ summary.total_prs }}</div>
+    </div>
+    <div class="card">
+        <h3>Merged PRs</h3>
+        <div class="value">{{ summary.merged_prs }}</div>
+    </div>
+    <div class="card">
+        <h3>Open PRs</h3>
+        <div class="value">{{ summary.open_prs }}</div>
+    </div>
+    <div class="card">
+        <h3>Avg Cycle Time</h3>
+        <div class="value">{{ format_hours(summary.avg_cycle_time_hours) }}</div>
+    </div>
+    <div class="card">
+        <h3>Active Contributors</h3>
+        <div class="value">{{ summary.unique_authors }}</div>
+    </div>
+</div>

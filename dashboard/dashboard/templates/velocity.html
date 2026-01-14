@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Shipping Velocity - Developer Productivity Dashboard{% endblock %}
+
+{% block content %}
+<h1>Shipping Velocity</h1>
+<p class="secondary">PRs merged per developer over time</p>
+
+<form class="filters" method="get">
+    <div>
+        <label for="repo">Repository</label>
+        <select name="repo" id="repo">
+            <option value="">All Repositories</option>
+            {% for r in repos %}
+            <option value="{{ r }}" {% if selected_repo == r %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="granularity">Group By</label>
+        <select name="granularity" id="granularity">
+            <option value="week" {% if granularity == 'week' %}selected{% endif %}>Week</option>
+            <option value="month" {% if granularity == 'month' %}selected{% endif %}>Month</option>
+        </select>
+    </div>
+    <div>
+        <label for="days">Time Range</label>
+        <select name="days" id="days">
+            <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+            <option value="60" {% if days == 60 %}selected{% endif %}>Last 60 days</option>
+            <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+            <option value="180" {% if days == 180 %}selected{% endif %}>Last 180 days</option>
+        </select>
+    </div>
+</form>
+
+<div class="metrics-grid">
+    <div class="card">
+        <h3>Total PRs Merged</h3>
+        <div class="value">{{ velocity.total_prs }}</div>
+    </div>
+    <div class="card">
+        <h3>Contributors</h3>
+        <div class="value">{{ velocity.by_author | length }}</div>
+    </div>
+</div>
+
+{% if velocity.periods %}
+<div class="chart-container">
+    <canvas id="velocityChart"></canvas>
+</div>
+
+<h2>Leaderboard</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Rank</th>
+            <th>Author</th>
+            <th>PRs Merged</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for author in velocity.by_author %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ author.author }}</td>
+            <td>{{ author.total }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<article>
+    <p>No merged PRs found in the selected time range.</p>
+</article>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if velocity.periods %}
+<script>
+const ctx = document.getElementById('velocityChart').getContext('2d');
+const colors = [
+    '#6366f1', '#22c55e', '#eab308', '#ef4444', '#8b5cf6',
+    '#ec4899', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'
+];
+
+new Chart(ctx, {
+    type: 'bar',
+    data: {
+        labels: {{ velocity.periods | tojson }},
+        datasets: [
+            {% for author in velocity.by_author[:10] %}
+            {
+                label: '{{ author.author }}',
+                data: {{ author.data | tojson }},
+                backgroundColor: colors[{{ loop.index0 }} % colors.length],
+            },
+            {% endfor %}
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+            },
+            title: {
+                display: true,
+                text: 'PRs Merged by {{ granularity | capitalize }}'
+            }
+        },
+        scales: {
+            x: {
+                stacked: true,
+            },
+            y: {
+                stacked: true,
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: 'PRs Merged'
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

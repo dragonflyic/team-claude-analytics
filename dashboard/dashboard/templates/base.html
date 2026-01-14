@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Developer Productivity Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+        }
+        nav {
+            background: var(--primary);
+            padding: 0 1rem;
+        }
+        nav ul li a {
+            color: white !important;
+        }
+        nav ul li a:hover {
+            color: rgba(255,255,255,0.8) !important;
+        }
+        nav ul li a.active {
+            font-weight: bold;
+            border-bottom: 2px solid white;
+        }
+        .card {
+            background: var(--card-background-color);
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .card h3 {
+            margin-bottom: 0.5rem;
+            color: var(--muted-color);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--color);
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+        }
+        .filters {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            align-items: end;
+        }
+        .filters label {
+            margin-bottom: 0.25rem;
+        }
+        .filters select, .filters input {
+            margin-bottom: 0;
+        }
+        table {
+            font-size: 0.9rem;
+        }
+        .pr-title {
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .time-good { color: #22c55e; }
+        .time-ok { color: #eab308; }
+        .time-slow { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <nav>
+        <ul>
+            <li><strong style="color: white;">Productivity Dashboard</strong></li>
+        </ul>
+        <ul>
+            <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Overview</a></li>
+            <li><a href="/velocity" class="{% if request.url.path == '/velocity' %}active{% endif %}">Velocity</a></li>
+            <li><a href="/cycle-time" class="{% if request.url.path == '/cycle-time' %}active{% endif %}">Cycle Time</a></li>
+        </ul>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    <script>
+        // Auto-submit forms on change for HTMX
+        document.addEventListener('change', function(e) {
+            if (e.target.closest('.filters')) {
+                e.target.closest('form')?.requestSubmit();
+            }
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

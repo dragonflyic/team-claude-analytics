@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "dashboard"
+version = "0.1.0"
+description = "Developer productivity dashboard for team analytics"
+authors = ["Team"]
+packages = [{include = "dashboard"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+psycopg2-binary = "^2.9.9"
+python-dotenv = "^1.0.0"
+httpx = "^0.26.0"
+jinja2 = "^3.1.0"
+apscheduler = "^3.10.0"
+pydantic-settings = "^2.1.0"
+
+[tool.poetry.scripts]
+dashboard = "dashboard.main:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.23.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
