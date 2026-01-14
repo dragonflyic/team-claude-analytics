@@ -31,9 +31,9 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     docker rm "$CONTAINER_NAME" 2>/dev/null || true
 fi
 
-# Prompt for password
+# Prompt for password (read from /dev/tty for curl|bash compatibility)
 echo "Enter the database password (ask your team lead if you don't have it):"
-read -s DB_PASSWORD
+read -s DB_PASSWORD < /dev/tty
 echo ""
 
 if [ -z "$DB_PASSWORD" ]; then
