@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "claude-log-collector"
+version = "0.1.0"
+description = "Collects Claude chat logs and streams them to PostgreSQL"
+authors = ["Team"]
+packages = [{include = "collector"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+watchdog = "^4.0.0"
+psycopg2-binary = "^2.9.9"
+python-dotenv = "^1.0.0"
+
+[tool.poetry.scripts]
+collector = "collector.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
