@@ -198,6 +198,7 @@ async def pr_timeline_view(
                 "db_error": db_error,
                 "not_found": False,
                 "extract_content_text": metrics.extract_content_text,
+                "get_display_role": metrics.get_display_role,
             },
         )
 
@@ -215,6 +216,7 @@ async def pr_timeline_view(
                 "db_error": None,
                 "not_found": True,
                 "extract_content_text": metrics.extract_content_text,
+                "get_display_role": metrics.get_display_role,
             },
         )
 
@@ -240,6 +242,7 @@ async def pr_timeline_view(
             "db_error": None,
             "not_found": False,
             "extract_content_text": metrics.extract_content_text,
+            "get_display_role": metrics.get_display_role,
         },
     )
 

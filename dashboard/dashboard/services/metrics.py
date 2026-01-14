@@ -265,6 +265,48 @@ def get_summary_metrics(db: DatabaseClient, days: int = 30) -> dict:
     }
 
 
+def get_display_role(msg: dict) -> str:
+    """Determine the display role for a message.
+
+    Returns a human-friendly label:
+    - "You" for actual human input
+    - "Claude" for assistant responses
+    - "System" for meta/system messages
+    - "Tool Output" for command output
+    - "Command" for slash commands
+    """
+    msg_type = msg.get("message_type") or msg.get("type")
+    role = msg.get("role")
+    content = msg.get("content", "")
+
+    # Assistant messages
+    if msg_type == "assistant" or role == "assistant":
+        return "Claude"
+
+    # For user-type messages, check the content to determine actual source
+    if msg_type == "user" or role == "user":
+        content_str = str(content) if content else ""
+
+        # System/meta messages
+        if content_str.startswith("<local-command-caveat>"):
+            return "System"
+        if content_str.startswith("<local-command-stdout>"):
+            return "Tool Output"
+        if content_str.startswith("<command-name>"):
+            return "Command"
+        if content_str.startswith("<"):
+            return "System"  # Other XML-tagged content
+
+        # Plain text = actual human input
+        return "You"
+
+    # System messages
+    if msg_type == "system":
+        return "System"
+
+    return msg_type or role or "Unknown"
+
+
 def extract_content_text(content: Any) -> str:
     """Extract readable text from Claude message content.
 
