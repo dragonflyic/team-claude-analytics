@@ -103,11 +103,9 @@ def calculate_pr_cycle_time(pr: dict, filter_bots: bool = True) -> dict:
     if hours_before_pr is not None and hours_before_pr < 0:
         hours_before_pr = None
 
-    # For total time, use the earlier of first_commit or created as start
-    if first_commit and created:
-        start_time = min(first_commit, created)
-    else:
-        start_time = created or first_commit
+    # For total time, use the earliest available timestamp as start
+    timestamps = [t for t in [first_claude_chat, first_commit, created] if t is not None]
+    start_time = min(timestamps) if timestamps else None
 
     return {
         "pr_number": pr["pr_number"],
