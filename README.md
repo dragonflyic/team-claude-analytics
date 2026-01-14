@@ -53,7 +53,20 @@ export DB_PASSWORD=your-password
 poetry run collector
 ```
 
-#### Option B: Run with Docker
+#### Option B: Run with Docker (from public ECR)
+
+```bash
+docker run -d \
+  --name claude-collector \
+  --restart unless-stopped \
+  -e DB_HOST=your-rds-endpoint.region.rds.amazonaws.com \
+  -e DB_PASSWORD=your-password \
+  -v ~/.claude/projects:/claude-projects:ro \
+  -v ~/.claude-collector:/state \
+  public.ecr.aws/z7t5p0k6/claude-log-collector:latest
+```
+
+#### Option C: Run with Docker Compose (local build)
 
 ```bash
 # Copy and edit environment file

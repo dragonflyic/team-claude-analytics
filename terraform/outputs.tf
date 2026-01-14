@@ -34,3 +34,13 @@ output "connection_string" {
   value       = "postgresql://${aws_db_instance.main.username}@${aws_db_instance.main.address}:${aws_db_instance.main.port}/${aws_db_instance.main.db_name}"
   sensitive   = true
 }
+
+output "ecr_repository_url" {
+  description = "Public ECR repository URL"
+  value       = aws_ecrpublic_repository.collector.repository_uri
+}
+
+output "ecr_registry_id" {
+  description = "Public ECR registry ID"
+  value       = aws_ecrpublic_repository.collector.registry_id
+}

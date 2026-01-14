@@ -1,8 +1,10 @@
 services:
   collector:
-    build:
-      context: ./collector
-      dockerfile: Dockerfile
+    image: public.ecr.aws/z7t5p0k6/claude-log-collector:latest
+    # To build locally instead, comment out 'image' and uncomment 'build':
+    # build:
+    #   context: ./collector
+    #   dockerfile: Dockerfile
     container_name: claude-log-collector
     restart: unless-stopped
     environment:
