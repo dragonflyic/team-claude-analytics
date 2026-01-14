@@ -20,7 +20,7 @@ Shared team analytics for Claude usage. Collects Claude chat logs from developer
 Run this one-liner to install the collector on your machine:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/dragonflyic/team-claude-analytics/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/dragonflyic/team-claude-analytics/main/collector/install.sh | bash
 ```
 
 It will prompt for the database password (ask your team lead).
