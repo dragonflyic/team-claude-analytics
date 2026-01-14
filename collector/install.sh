@@ -64,9 +64,11 @@ docker run -d \
 
 # Run watchtower for auto-updates (checks hourly)
 echo "Starting watchtower for auto-updates..."
+DOCKER_API=$(docker version --format '{{.Server.APIVersion}}')
 docker run -d \
     --name "${CONTAINER_NAME}-watchtower" \
     --restart unless-stopped \
+    -e DOCKER_API_VERSION="$DOCKER_API" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     containrrr/watchtower \
     --cleanup --interval 3600 \
