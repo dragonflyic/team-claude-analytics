@@ -15,7 +15,19 @@ Shared team analytics for Claude usage. Collects Claude chat logs from developer
 - Terraform 1.0+ (for infrastructure)
 - AWS CLI configured with credentials
 
-## Quick Start
+## Quick Start (for developers)
+
+Run this one-liner to install the collector on your machine:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/dragonflyic/team-claude-analytics/main/install.sh | bash
+```
+
+It will prompt for the database password (ask your team lead).
+
+---
+
+## Infrastructure Setup (for admins)
 
 ### 1. Provision Infrastructure
 
