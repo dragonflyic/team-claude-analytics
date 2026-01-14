@@ -47,15 +47,24 @@ async def lifespan(app: FastAPI):
         db.init_schema()
         app.state.db = db
 
-        # Run initial sync if GitHub is configured
+        # Start background scheduler
+        scheduler = AsyncIOScheduler()
+
+        # Schedule initial sync to run shortly after startup (non-blocking)
         if config.github_token and config.github_repos:
-            logger.info("Running initial GitHub sync...")
-            await run_sync(config, db)
+            from datetime import datetime, timedelta
+            scheduler.add_job(
+                run_sync,
+                "date",
+                run_date=datetime.now() + timedelta(seconds=5),
+                args=[config, db],
+                id="github_sync_initial",
+            )
+            logger.info("Initial GitHub sync scheduled to run in 5 seconds")
         else:
             logger.warning("GitHub not configured, skipping sync")
 
-        # Start background scheduler
-        scheduler = AsyncIOScheduler()
+        # Schedule recurring sync
         scheduler.add_job(
             run_sync,
             "interval",

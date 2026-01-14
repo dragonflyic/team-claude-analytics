@@ -63,3 +63,37 @@ variable "multi_az" {
   type        = bool
   default     = false
 }
+
+# Dashboard / ECS variables
+# Note: github_token is stored in AWS Parameter Store, not Terraform
+# Create it manually at: /${project_name}/github-token
+
+variable "github_repos" {
+  description = "Comma-separated list of GitHub repos to sync (owner/repo format)"
+  type        = string
+  default     = ""
+}
+
+variable "sync_interval_minutes" {
+  description = "How often to sync GitHub data (minutes)"
+  type        = number
+  default     = 15
+}
+
+variable "dashboard_cpu" {
+  description = "Fargate CPU units for dashboard (256, 512, 1024, 2048, 4096)"
+  type        = number
+  default     = 256
+}
+
+variable "dashboard_memory" {
+  description = "Fargate memory (MB) for dashboard"
+  type        = number
+  default     = 512
+}
+
+variable "dashboard_desired_count" {
+  description = "Number of dashboard instances to run"
+  type        = number
+  default     = 1
+}

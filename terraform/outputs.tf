@@ -44,3 +44,24 @@ output "ecr_registry_id" {
   description = "Public ECR registry ID"
   value       = aws_ecrpublic_repository.collector.registry_id
 }
+
+# Dashboard outputs
+output "dashboard_url" {
+  description = "Dashboard URL (ALB DNS name)"
+  value       = "http://${aws_lb.dashboard.dns_name}"
+}
+
+output "dashboard_ecr_repository_url" {
+  description = "Dashboard ECR repository URL"
+  value       = aws_ecr_repository.dashboard.repository_url
+}
+
+output "ecs_cluster_name" {
+  description = "ECS cluster name"
+  value       = aws_ecs_cluster.main.name
+}
+
+output "ecs_service_name" {
+  description = "ECS service name"
+  value       = aws_ecs_service.dashboard.name
+}

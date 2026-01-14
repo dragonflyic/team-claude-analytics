@@ -8,9 +8,9 @@ RUN pip install --no-cache-dir poetry
 # Copy dependency files
 COPY pyproject.toml poetry.lock* ./
 
-# Install dependencies (no dev deps, no virtualenv)
+# Install dependencies (no dev deps, no virtualenv, no root package)
 RUN poetry config virtualenvs.create false \
-    && poetry install --only main --no-interaction --no-ansi
+    && poetry install --only main --no-root --no-interaction --no-ansi
 
 # Copy application code
 COPY dashboard ./dashboard
