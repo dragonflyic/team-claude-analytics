@@ -24,11 +24,17 @@ if ! docker info &> /dev/null; then
     exit 1
 fi
 
-# Check if container already exists
+# Check if containers already exist
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     echo "Existing collector found. Stopping and removing..."
     docker stop "$CONTAINER_NAME" 2>/dev/null || true
     docker rm "$CONTAINER_NAME" 2>/dev/null || true
+fi
+
+if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}-watchtower$"; then
+    echo "Existing watchtower found. Stopping and removing..."
+    docker stop "${CONTAINER_NAME}-watchtower" 2>/dev/null || true
+    docker rm "${CONTAINER_NAME}-watchtower" 2>/dev/null || true
 fi
 
 # Prompt for password (read from /dev/tty for curl|bash compatibility)
@@ -45,7 +51,7 @@ fi
 echo "Pulling latest collector image..."
 docker pull "$IMAGE"
 
-# Run container
+# Run collector container
 echo "Starting collector..."
 docker run -d \
     --name "$CONTAINER_NAME" \
@@ -56,6 +62,16 @@ docker run -d \
     -v "$HOME/.claude-collector:/home/collector/.claude-collector" \
     "$IMAGE"
 
+# Run watchtower for auto-updates (checks hourly)
+echo "Starting watchtower for auto-updates..."
+docker run -d \
+    --name "${CONTAINER_NAME}-watchtower" \
+    --restart unless-stopped \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    containrrr/watchtower \
+    --cleanup --interval 3600 \
+    "$CONTAINER_NAME"
+
 echo ""
 echo "=== Installation complete! ==="
 echo ""
@@ -63,10 +79,10 @@ echo "The collector is now running and will automatically:"
 echo "  - Stream your Claude chat logs to the team database"
 echo "  - Start on boot (unless you stop it)"
 echo "  - Resume from where it left off if restarted"
+echo "  - Auto-update hourly via Watchtower"
 echo ""
 echo "Useful commands:"
-echo "  docker logs -f $CONTAINER_NAME    # View logs"
-echo "  docker stop $CONTAINER_NAME       # Stop collector"
-echo "  docker start $CONTAINER_NAME      # Start collector"
+echo "  docker logs -f $CONTAINER_NAME                # View collector logs"
+echo "  docker logs ${CONTAINER_NAME}-watchtower      # View update logs"
 echo ""
-echo "To update to the latest version, just run this installer again."
+echo "To manually update now, run this installer again."
