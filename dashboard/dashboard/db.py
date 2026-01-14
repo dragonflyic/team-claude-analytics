@@ -77,8 +77,10 @@ class DatabaseClient:
         );
 
         ALTER TABLE github_pull_requests ADD COLUMN IF NOT EXISTS first_commit_at TIMESTAMPTZ;
+        ALTER TABLE github_pull_requests ADD COLUMN IF NOT EXISTS first_claude_chat_at TIMESTAMPTZ;
 
         CREATE INDEX IF NOT EXISTS idx_pr_author ON github_pull_requests(author_login);
+        CREATE INDEX IF NOT EXISTS idx_claude_logs_git_branch ON claude_logs(git_branch);
         CREATE INDEX IF NOT EXISTS idx_pr_repo ON github_pull_requests(repo_full_name);
         CREATE INDEX IF NOT EXISTS idx_pr_created ON github_pull_requests(created_at);
         CREATE INDEX IF NOT EXISTS idx_pr_merged ON github_pull_requests(merged_at);
@@ -103,21 +105,24 @@ class DatabaseClient:
                     """
                     INSERT INTO github_pull_requests (
                         repo_full_name, pr_number, title, author_login, state,
-                        draft, created_at, first_commit_at, first_review_at, approved_at,
-                        merged_at, closed_at, additions, deletions, changed_files,
+                        draft, created_at, first_commit_at, first_claude_chat_at,
+                        first_review_at, approved_at, merged_at, closed_at,
+                        additions, deletions, changed_files,
                         head_branch, base_branch, raw_data, synced_at
                     ) VALUES (
                         %(repo_full_name)s, %(pr_number)s, %(title)s, %(author_login)s,
                         %(state)s, %(draft)s, %(created_at)s, %(first_commit_at)s,
-                        %(first_review_at)s, %(approved_at)s, %(merged_at)s, %(closed_at)s,
-                        %(additions)s, %(deletions)s, %(changed_files)s, %(head_branch)s,
-                        %(base_branch)s, %(raw_data)s, NOW()
+                        %(first_claude_chat_at)s, %(first_review_at)s, %(approved_at)s,
+                        %(merged_at)s, %(closed_at)s, %(additions)s, %(deletions)s,
+                        %(changed_files)s, %(head_branch)s, %(base_branch)s,
+                        %(raw_data)s, NOW()
                     )
                     ON CONFLICT (repo_full_name, pr_number) DO UPDATE SET
                         title = EXCLUDED.title,
                         state = EXCLUDED.state,
                         draft = EXCLUDED.draft,
                         first_commit_at = EXCLUDED.first_commit_at,
+                        first_claude_chat_at = EXCLUDED.first_claude_chat_at,
                         first_review_at = EXCLUDED.first_review_at,
                         approved_at = EXCLUDED.approved_at,
                         merged_at = EXCLUDED.merged_at,
@@ -203,3 +208,31 @@ class DatabaseClient:
         except psycopg2.Error as e:
             logger.error(f"Failed to fetch authors: {e}")
             return []
+
+    def get_first_claude_chat_for_branches(
+        self, branches: list[str]
+    ) -> dict[str, datetime | None]:
+        """Get first Claude chat timestamps for multiple branches.
+
+        Returns a dict mapping branch name to earliest chat timestamp.
+        """
+        self.ensure_connected()
+
+        if not branches:
+            return {}
+
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT git_branch, MIN(timestamp) as first_chat
+                    FROM claude_logs
+                    WHERE git_branch = ANY(%s)
+                    GROUP BY git_branch
+                    """,
+                    (branches,),
+                )
+                return {row[0]: row[1] for row in cur.fetchall()}
+        except psycopg2.Error as e:
+            logger.error(f"Failed to get first Claude chats for branches: {e}")
+            return {}

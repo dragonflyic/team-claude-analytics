@@ -50,7 +50,14 @@ async def sync_repo(
 
     logger.info(f"Syncing PRs from {repo_full_name} since {since.date()}")
 
-    async for pr in github_client.get_pulls(owner, repo, state="all", since=since):
+    # Collect all PRs first to enable batch Claude chat lookup
+    prs = [pr async for pr in github_client.get_pulls(owner, repo, state="all", since=since)]
+
+    # Batch lookup first Claude chat timestamps for all branches
+    branches = [pr["head"]["ref"] for pr in prs]
+    first_claude_chats = db_client.get_first_claude_chat_for_branches(branches)
+
+    for pr in prs:
         try:
             # Get detailed PR info (includes additions/deletions)
             detail = await github_client.get_pull_detail(owner, repo, pr["number"])
@@ -100,6 +107,7 @@ async def sync_repo(
                 "draft": pr.get("draft", False),
                 "created_at": parse_timestamp(pr["created_at"]),
                 "first_commit_at": first_commit_at,
+                "first_claude_chat_at": first_claude_chats.get(pr["head"]["ref"]),
                 "first_review_at": first_review_at,
                 "approved_at": approved_at,
                 "merged_at": parse_timestamp(pr.get("merged_at")),

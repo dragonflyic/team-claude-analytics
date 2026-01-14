@@ -80,6 +80,7 @@ def calculate_pr_cycle_time(pr: dict, filter_bots: bool = True) -> dict:
     If filter_bots is True, uses human-only review times from raw_data.
     Otherwise uses the stored first_review_at/approved_at timestamps.
     """
+    first_claude_chat = pr.get("first_claude_chat_at")
     first_commit = pr.get("first_commit_at")
     created = pr.get("created_at")
     merged = pr.get("merged_at")
@@ -89,6 +90,12 @@ def calculate_pr_cycle_time(pr: dict, filter_bots: bool = True) -> dict:
     else:
         first_review = pr.get("first_review_at")
         approved = pr.get("approved_at")
+
+    # Calculate hours from first Claude chat to first commit
+    # If chat is after commit (started using Claude mid-project), show None
+    hours_before_first_commit = hours_between(first_claude_chat, first_commit)
+    if hours_before_first_commit is not None and hours_before_first_commit < 0:
+        hours_before_first_commit = None
 
     # Calculate hours before PR (first commit to PR creation)
     # If first commit is after PR creation (rebases/force-pushes), show None
@@ -106,9 +113,11 @@ def calculate_pr_cycle_time(pr: dict, filter_bots: bool = True) -> dict:
         "pr_number": pr["pr_number"],
         "title": pr["title"],
         "author": pr["author_login"],
+        "first_claude_chat_at": first_claude_chat,
         "first_commit_at": first_commit,
         "created_at": created,
         "merged_at": merged,
+        "hours_before_first_commit": hours_before_first_commit,
         "hours_before_pr": hours_before_pr,
         "hours_to_first_review": hours_between(created, first_review),
         "hours_to_approval": hours_between(created, approved),  # Total time from creation to approval
@@ -129,6 +138,7 @@ def get_cycle_time_metrics(
     if not prs:
         return {
             "count": 0,
+            "avg_hours_before_first_commit": None,
             "avg_hours_before_pr": None,
             "avg_hours_to_first_review": None,
             "avg_hours_to_approval": None,
@@ -153,6 +163,7 @@ def get_cycle_time_metrics(
 
     return {
         "count": len(prs),
+        "avg_hours_before_first_commit": avg([ct["hours_before_first_commit"] for ct in cycle_times]),
         "avg_hours_before_pr": avg([ct["hours_before_pr"] for ct in cycle_times]),
         "avg_hours_to_first_review": avg([ct["hours_to_first_review"] for ct in cycle_times]),
         "avg_hours_to_approval": avg([ct["hours_to_approval"] for ct in cycle_times]),
