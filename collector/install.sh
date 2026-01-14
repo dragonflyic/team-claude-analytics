@@ -58,6 +58,7 @@ docker run -d \
     --restart unless-stopped \
     -e DB_HOST="$DB_HOST" \
     -e DB_PASSWORD="$DB_PASSWORD" \
+    -e COLLECTOR_HOST="$(hostname)" \
     -v "$HOME/.claude/projects:/claude-projects:ro" \
     -v "$HOME/.claude-collector:/home/collector/.claude-collector" \
     "$IMAGE"
