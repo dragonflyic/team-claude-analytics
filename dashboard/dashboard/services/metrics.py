@@ -118,6 +118,8 @@ def get_cycle_time_metrics(
             "avg_hours_to_approval": None,
             "avg_hours_to_merge": None,
             "avg_total_hours": None,
+            "prs_without_review_count": 0,
+            "prs_without_review_pct": 0,
             "prs": [],
         }
 
@@ -128,12 +130,19 @@ def get_cycle_time_metrics(
         valid = [v for v in values if v is not None]
         return sum(valid) / len(valid) if valid else None
 
+    # Calculate percentage of PRs merged without any review
+    prs_without_review = [ct for ct in cycle_times if ct["hours_to_first_review"] is None]
+    prs_without_review_count = len(prs_without_review)
+    prs_without_review_pct = (prs_without_review_count / len(prs) * 100) if prs else 0
+
     return {
         "count": len(prs),
         "avg_hours_to_first_review": avg([ct["hours_to_first_review"] for ct in cycle_times]),
         "avg_hours_to_approval": avg([ct["hours_to_approval"] for ct in cycle_times]),
         "avg_hours_to_merge": avg([ct["hours_to_merge"] for ct in cycle_times]),
         "avg_total_hours": avg([ct["total_hours"] for ct in cycle_times]),
+        "prs_without_review_count": prs_without_review_count,
+        "prs_without_review_pct": prs_without_review_pct,
         "prs": cycle_times,
     }
 

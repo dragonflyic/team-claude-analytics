@@ -60,6 +60,11 @@
         <h3>Avg Total Cycle Time</h3>
         <div class="value">{{ format_hours(cycle_time.avg_total_hours) }}</div>
     </div>
+    <div class="card">
+        <h3>Merged Without Review</h3>
+        <div class="value">{{ "%.1f"|format(cycle_time.prs_without_review_pct) }}%</div>
+        <small class="secondary">{{ cycle_time.prs_without_review_count }} of {{ cycle_time.count }} PRs</small>
+    </div>
 </div>
 
 {% if cycle_time.prs %}
