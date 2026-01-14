@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}PR #{{ pr.pr_number }} - {{ pr.title }}{% endblock %}
+
+{% block content %}
+{% if not_found %}
+<article>
+    <h1>PR Not Found</h1>
+    <p>The requested pull request could not be found.</p>
+    <a href="/cycle-time">Back to Cycle Time</a>
+</article>
+{% elif db_error %}
+<article>
+    <h1>Database Error</h1>
+    <p>{{ db_error }}</p>
+</article>
+{% elif pr %}
+<nav aria-label="breadcrumb">
+    <ul>
+        <li><a href="/cycle-time">Cycle Time</a></li>
+        <li>{{ pr.repo_full_name }}</li>
+        <li>#{{ pr.pr_number }}</li>
+    </ul>
+</nav>
+
+<div class="pr-header">
+    <h1>
+        <a href="https://github.com/{{ pr.repo_full_name }}/pull/{{ pr.pr_number }}"
+           target="_blank" rel="noopener">
+            #{{ pr.pr_number }}
+        </a>
+        {{ pr.title }}
+    </h1>
+    <div class="pr-meta">
+        <span>by <strong>{{ pr.author_login }}</strong></span>
+        <span class="state-{{ pr.state }}">{{ pr.state }}</span>
+        <span>+{{ pr.additions or 0 }}/-{{ pr.deletions or 0 }}</span>
+        <span>{{ pr.changed_files or 0 }} files</span>
+        {% if pr.head_branch %}
+        <span>{{ pr.head_branch }}</span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Review Summary Card -->
+<article class="review-summary">
+    <h3>Review Summary</h3>
+    <div>{{ review_summary | safe }}</div>
+</article>
+
+<!-- PR Timeline -->
+<h2>Timeline</h2>
+<p class="secondary">
+    First Claude chat (from DB):
+    {% if pr.first_claude_chat_at %}
+        <time class="local-time" data-utc="{{ pr.first_claude_chat_at | utc_iso }}"></time>
+    {% else %}
+        None recorded
+    {% endif %}
+    | First commit:
+    {% if pr.first_commit_at %}
+        <time class="local-time" data-utc="{{ pr.first_commit_at | utc_iso }}"></time>
+    {% else %}
+        None
+    {% endif %}
+    | PR opened: <time class="local-time" data-utc="{{ pr.created_at | utc_iso }}"></time>
+</p>
+{% if timeline_events %}
+<div class="timeline">
+    {% for event in timeline_events %}
+    <div class="timeline-event timeline-event--{{ event.type }}">
+        <div class="timeline-marker"></div>
+        <div class="timeline-content">
+            <time class="time-delta" data-utc="{{ event.timestamp | utc_iso }}" title="">{{ event.time_delta }}</time>
+            <h4>{{ event.title }}</h4>
+
+            {% if event.expandable %}
+            <details>
+                <summary>View details</summary>
+                {% if event.type == 'claude_session' %}
+                <div class="session-messages">
+                    {% for msg in event.detail.messages %}
+                    {% set display_role = msg.role or msg.message_type or 'unknown' %}
+                    <div class="chat-message chat-message--{{ display_role }}">
+                        <div class="msg-meta">
+                            <span class="role">{{ display_role }}</span>
+                            <time class="local-time" data-utc="{{ msg.timestamp | utc_iso }}"></time>
+                            {% if msg.model %}
+                            <span>{{ msg.model }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="chat-content">{{ extract_content_text(msg.content) }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% elif event.type == 'review' %}
+                <blockquote>{{ event.detail.body }}</blockquote>
+                {% endif %}
+            </details>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<article>
+    <p>No timeline events found for this PR.</p>
+</article>
+{% endif %}
+
+<!-- All Claude Sessions -->
+{% if claude_sessions %}
+<h2>All Claude Code Sessions</h2>
+<p class="secondary">{{ claude_sessions | length }} session(s) linked to branch <code>{{ pr.head_branch }}</code></p>
+{% for session in claude_sessions %}
+<details class="claude-session">
+    <summary>
+        Session {{ loop.index }} - {{ session.message_count }} messages
+        <span class="session-time" data-start="{{ session.first_message_at | utc_iso }}" data-end="{{ session.last_message_at | utc_iso }}"></span>
+        <code class="session-id" style="font-size: 0.7rem; color: var(--muted-color);">{{ session.session_id }}</code>
+    </summary>
+    <div class="session-messages">
+        {% for msg in session.messages %}
+        {% set display_role = msg.role or msg.message_type or 'unknown' %}
+        <div class="chat-message chat-message--{{ display_role }}">
+            <div class="msg-meta">
+                <span class="role">{{ display_role }}</span>
+                <time class="local-time" data-utc="{{ msg.timestamp | utc_iso }}"></time>
+                {% if msg.model %}
+                <span>{{ msg.model }}</span>
+                {% endif %}
+                {% if msg.input_tokens or msg.output_tokens %}
+                <span>({{ msg.input_tokens or 0 }} in / {{ msg.output_tokens or 0 }} out)</span>
+                {% endif %}
+            </div>
+            <div class="chat-content">{{ extract_content_text(msg.content) }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</details>
+{% endfor %}
+{% else %}
+<h2>Claude Code Sessions</h2>
+<article>
+    <p>No Claude Code sessions found for this PR's branch{% if pr.head_branch %} (<code>{{ pr.head_branch }}</code>){% endif %}.</p>
+</article>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Format date/time in user's local timezone
+function formatLocalDateTime(date) {
+    return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
+function formatLocalTime(date) {
+    return date.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
+// Update title attributes with local time for delta times (hover tooltip)
+document.querySelectorAll('.time-delta[data-utc]').forEach(el => {
+    const utc = el.dataset.utc;
+    if (utc) {
+        const date = new Date(utc);
+        el.title = formatLocalDateTime(date);
+    }
+});
+
+// Update local-time elements to show local time
+document.querySelectorAll('.local-time[data-utc]').forEach(el => {
+    const utc = el.dataset.utc;
+    if (utc) {
+        const date = new Date(utc);
+        el.textContent = formatLocalTime(date);
+    }
+});
+
+// Update session time ranges
+document.querySelectorAll('.session-time[data-start]').forEach(el => {
+    const start = new Date(el.dataset.start);
+    const end = new Date(el.dataset.end);
+    el.textContent = `(${formatLocalDateTime(start)} - ${formatLocalTime(end)})`;
+});
+</script>
+{% endblock %}

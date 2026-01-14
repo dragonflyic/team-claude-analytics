@@ -79,6 +79,147 @@
         .time-good { color: #22c55e; }
         .time-ok { color: #eab308; }
         .time-slow { color: #ef4444; }
+
+        /* Timeline styles */
+        .timeline {
+            position: relative;
+            padding-left: 2rem;
+            margin: 2rem 0;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--muted-border-color);
+        }
+        .timeline-event {
+            position: relative;
+            margin-bottom: 1.5rem;
+            padding-left: 1rem;
+        }
+        .timeline-marker {
+            position: absolute;
+            left: -1.5rem;
+            top: 0.25rem;
+            width: 1rem;
+            height: 1rem;
+            border-radius: 50%;
+            background: var(--primary);
+        }
+        .timeline-event--claude_session .timeline-marker { background: #8b5cf6; }
+        .timeline-event--claude_session_base .timeline-marker { background: #a78bfa; border: 2px dashed #8b5cf6; }
+        .timeline-event--first_commit .timeline-marker { background: #3b82f6; }
+        .timeline-event--pr_opened .timeline-marker { background: #22c55e; }
+        .timeline-event--review .timeline-marker { background: #eab308; }
+        .timeline-event--merged .timeline-marker { background: #14b8a6; }
+        .timeline-content time {
+            font-size: 0.8rem;
+            color: var(--muted-color);
+        }
+        .timeline-content h4 {
+            margin: 0.25rem 0 0.5rem 0;
+            font-size: 1rem;
+        }
+
+        /* Chat message styles */
+        .chat-message {
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            border-radius: var(--border-radius);
+            border-left: 3px solid var(--muted-border-color);
+        }
+        .chat-message--user {
+            background: #e0e7ff;
+            border-left-color: #6366f1;
+        }
+        .chat-message--assistant {
+            background: #f0fdf4;
+            border-left-color: #22c55e;
+        }
+        .chat-message .msg-meta {
+            font-size: 0.75rem;
+            color: var(--muted-color);
+            margin-bottom: 0.5rem;
+        }
+        .chat-message .msg-meta .role {
+            font-weight: bold;
+            text-transform: capitalize;
+        }
+        .chat-content {
+            white-space: pre-wrap;
+            font-family: var(--font-family);
+            font-size: 0.875rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* PR timeline page styles */
+        .pr-header {
+            margin-bottom: 1.5rem;
+        }
+        .pr-header h1 {
+            margin-bottom: 0.5rem;
+        }
+        .pr-header h1 a {
+            color: var(--primary);
+        }
+        .pr-meta {
+            display: flex;
+            gap: 1rem;
+            color: var(--muted-color);
+            font-size: 0.9rem;
+        }
+        .pr-meta .state-merged { color: #8b5cf6; }
+        .pr-meta .state-open { color: #22c55e; }
+        .pr-meta .state-closed { color: #ef4444; }
+        .review-summary {
+            margin-bottom: 2rem;
+        }
+        .claude-session {
+            margin-bottom: 1rem;
+        }
+        .claude-session summary {
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .session-messages {
+            margin-top: 1rem;
+            padding-left: 1rem;
+            border-left: 2px solid #8b5cf6;
+        }
+        .from-base-branch {
+            border-left: 3px dashed #a78bfa;
+            padding-left: 0.5rem;
+        }
+        .branch-tag {
+            background: #a78bfa;
+            color: white;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+        }
+
+        /* Breadcrumb styling */
+        nav[aria-label="breadcrumb"] ul {
+            display: flex;
+            gap: 0.5rem;
+            list-style: none;
+            padding: 0;
+            margin: 0 0 1rem 0;
+            font-size: 0.9rem;
+        }
+        nav[aria-label="breadcrumb"] ul li::after {
+            content: "/";
+            margin-left: 0.5rem;
+            color: var(--muted-color);
+        }
+        nav[aria-label="breadcrumb"] ul li:last-child::after {
+            content: "";
+        }
     </style>
 </head>
 <body>

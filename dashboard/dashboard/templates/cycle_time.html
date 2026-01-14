@@ -99,7 +99,7 @@
     <tbody>
         {% for pr in cycle_time.prs[:50] %}
         <tr>
-            <td class="pr-title" title="{{ pr.title }}">#{{ pr.pr_number }} {{ pr.title }}</td>
+            <td class="pr-title" title="{{ pr.title }}"><a href="/pr/{{ pr.repo_full_name }}/{{ pr.pr_number }}">#{{ pr.pr_number }}</a> {{ pr.title }}</td>
             <td>{{ pr.author }}</td>
             <td>{{ format_hours(pr.hours_before_first_commit) }}</td>
             <td>{{ format_hours(pr.hours_before_pr) }}</td>

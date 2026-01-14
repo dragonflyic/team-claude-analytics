@@ -10,7 +10,6 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent, FileCreatedEvent
 
 from .config import Config
-from .parser import LogEntry, parse_line
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +54,17 @@ class LogFileHandler(FileSystemEventHandler):
 
     def __init__(
         self,
-        on_entry: Callable[[LogEntry], None],
+        on_line: Callable[[str, int, dict], None],
         state_manager: StateManager,
     ):
+        """Initialize handler.
+
+        Args:
+            on_line: Callback called with (file_path, line_offset, raw_json) for each line
+            state_manager: Tracks processed file positions
+        """
         super().__init__()
-        self.on_entry = on_entry
+        self.on_line = on_line
         self.state_manager = state_manager
 
     def on_created(self, event: FileCreatedEvent) -> None:
@@ -84,19 +89,34 @@ class LogFileHandler(FileSystemEventHandler):
 
             with open(file_path, "r") as f:
                 f.seek(position)
-                new_entries = 0
+                new_lines = 0
 
-                for line in f:
-                    entry = parse_line(line)
-                    if entry:
-                        self.on_entry(entry)
-                        new_entries += 1
+                while True:
+                    line_offset = f.tell()
+                    line = f.readline()
+                    if not line:
+                        break
+
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    # Sanitize null bytes - PostgreSQL JSONB can't store \u0000
+                    # These appear when Claude reads binary files
+                    line = line.replace("\\u0000", "").replace("\x00", "")
+
+                    try:
+                        raw_json = json.loads(line)
+                        self.on_line(file_path, line_offset, raw_json)
+                        new_lines += 1
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Invalid JSON at {file_path}:{line_offset}: {e}")
 
                 new_position = f.tell()
                 if new_position > position:
                     self.state_manager.set_position(file_path, new_position)
-                    if new_entries > 0:
-                        logger.debug(f"Processed {new_entries} entries from {file_path}")
+                    if new_lines > 0:
+                        logger.debug(f"Processed {new_lines} lines from {file_path}")
 
         except IOError as e:
             logger.error(f"Error processing file {file_path}: {e}")
@@ -108,11 +128,17 @@ class LogWatcher:
     def __init__(
         self,
         config: Config,
-        on_entry: Callable[[LogEntry], None],
+        on_line: Callable[[str, int, dict], None],
     ):
+        """Initialize watcher.
+
+        Args:
+            config: Collector configuration
+            on_line: Callback called with (file_path, line_offset, raw_json) for each line
+        """
         self.config = config
         self.state_manager = StateManager(config.state_path)
-        self.handler = LogFileHandler(on_entry, self.state_manager)
+        self.handler = LogFileHandler(on_line, self.state_manager)
         self.observer = Observer()
 
     def process_existing_files(self) -> None:

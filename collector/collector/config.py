@@ -36,8 +36,10 @@ class Config:
             claude_projects_path=Path(
                 os.getenv("CLAUDE_PROJECTS_PATH", Path.home() / ".claude" / "projects")
             ),
+            # v2: Changed from state.json to state-v2.json so new collectors
+            # automatically re-process all files into the new claude_raw_logs table
             state_path=Path(
-                os.getenv("STATE_PATH", Path.home() / ".claude-collector" / "state.json")
+                os.getenv("STATE_PATH", Path.home() / ".claude-collector" / "state-v2.json")
             ),
         )
 

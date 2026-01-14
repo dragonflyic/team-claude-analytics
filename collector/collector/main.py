@@ -6,7 +6,6 @@ import signal
 
 from .config import Config
 from .db import DatabaseClient
-from .parser import LogEntry
 from .watcher import LogWatcher
 
 # Configure logging
@@ -44,18 +43,20 @@ def main() -> None:
     # Track statistics
     stats = {"inserted": 0, "skipped": 0, "errors": 0}
 
-    def on_entry(entry: LogEntry) -> None:
-        """Handle a new log entry."""
+    def on_line(file_path: str, line_offset: int, raw_json: dict) -> None:
+        """Handle a new log line."""
         try:
-            inserted = db.insert_entry(entry, config.collector_host)
+            inserted = db.insert_raw_line(
+                config.collector_host, file_path, line_offset, raw_json
+            )
             if inserted:
                 stats["inserted"] += 1
-                logger.debug(f"Inserted entry {entry.message_uuid}")
+                logger.debug(f"Inserted line from {file_path}:{line_offset}")
             else:
                 stats["skipped"] += 1
         except Exception as e:
             stats["errors"] += 1
-            logger.error(f"Error inserting entry: {e}")
+            logger.error(f"Error inserting line: {e}")
 
     # Set up signal handler to show stats on exit
     def signal_handler(sig, frame):
@@ -66,7 +67,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, signal_handler)
 
     # Start watcher
-    watcher = LogWatcher(config, on_entry)
+    watcher = LogWatcher(config, on_line)
 
     # Process existing files first
     watcher.process_existing_files()

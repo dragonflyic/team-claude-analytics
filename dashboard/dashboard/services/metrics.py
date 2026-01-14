@@ -111,6 +111,7 @@ def calculate_pr_cycle_time(pr: dict, filter_bots: bool = True) -> dict:
 
     return {
         "pr_number": pr["pr_number"],
+        "repo_full_name": pr.get("repo_full_name"),
         "title": pr["title"],
         "author": pr["author_login"],
         "first_claude_chat_at": first_claude_chat,
@@ -262,3 +263,242 @@ def get_summary_metrics(db: DatabaseClient, days: int = 30) -> dict:
         "unique_authors": len(authors),
         "days": days,
     }
+
+
+def extract_content_text(content: Any) -> str:
+    """Extract readable text from Claude message content.
+
+    Content can be:
+    - A string (simple case)
+    - A list of content blocks: [{"type": "text", "text": "..."}, ...]
+    - A dict with various structures
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts = []
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    texts.append(block.get("text", ""))
+                elif block.get("type") == "tool_use":
+                    texts.append(f"[Tool: {block.get('name', 'unknown')}]")
+                elif block.get("type") == "tool_result":
+                    texts.append("[Tool result]")
+        return "\n".join(texts) if texts else str(content)
+    if isinstance(content, dict):
+        if "text" in content:
+            return content["text"]
+        return str(content)
+    return str(content)
+
+
+def extract_review_events(pr: dict) -> list[dict]:
+    """Extract review events from raw_data.reviews.
+
+    Returns sorted list of review events with:
+    - reviewer: str
+    - state: str (COMMENTED, APPROVED, CHANGES_REQUESTED, DISMISSED)
+    - body: str
+    - submitted_at: datetime
+    - is_bot: bool
+    """
+    raw_data = pr.get("raw_data") or {}
+    reviews = raw_data.get("reviews") or []
+
+    events = []
+    for review in reviews:
+        reviewer = review.get("user", {}).get("login", "unknown")
+        submitted = parse_review_timestamp(review.get("submitted_at"))
+        if not submitted:
+            continue
+
+        events.append({
+            "reviewer": reviewer,
+            "state": review.get("state", "COMMENTED"),
+            "body": review.get("body") or "",
+            "submitted_at": submitted,
+            "is_bot": is_bot_user(reviewer),
+        })
+
+    # Sort by timestamp
+    events.sort(key=lambda e: e["submitted_at"])
+    return events
+
+
+def format_time_delta(seconds: float) -> str:
+    """Format a time delta in seconds to human-readable form."""
+    if seconds < 60:
+        secs = int(seconds)
+        return f"{secs} sec later" if secs == 1 else f"{secs} secs later"
+    elif seconds < 3600:
+        mins = int(seconds / 60)
+        return f"{mins} min later" if mins == 1 else f"{mins} mins later"
+    elif seconds < 86400:
+        hours = seconds / 3600
+        if hours < 1.5:
+            return "1 hour later"
+        return f"{hours:.1f} hours later".replace(".0 ", " ")
+    else:
+        days = seconds / 86400
+        if days < 1.5:
+            return "1 day later"
+        return f"{days:.1f} days later".replace(".0 ", " ")
+
+
+def build_pr_timeline(pr: dict, claude_sessions: list[dict]) -> list[dict]:
+    """Build a unified timeline of all PR events.
+
+    Event types:
+    - 'claude_session': Claude chat session started
+    - 'first_commit': First commit on branch
+    - 'pr_opened': PR created
+    - 'review': Review submitted
+    - 'merged': PR merged
+
+    Each event has:
+    - type: str
+    - timestamp: datetime
+    - title: str (display text)
+    - detail: dict (type-specific data)
+    - expandable: bool
+    - time_delta: str (relative time from previous event)
+    """
+    events = []
+
+    # Add Claude session events
+    for session in claude_sessions:
+        events.append({
+            "type": "claude_session",
+            "timestamp": session["first_message_at"],
+            "title": f"Claude session ({session['message_count']} messages)",
+            "detail": session,
+            "expandable": True,
+        })
+
+    # Add first commit
+    if pr.get("first_commit_at"):
+        events.append({
+            "type": "first_commit",
+            "timestamp": pr["first_commit_at"],
+            "title": "First commit",
+            "detail": {},
+            "expandable": False,
+        })
+
+    # Add PR opened
+    if pr.get("created_at"):
+        events.append({
+            "type": "pr_opened",
+            "timestamp": pr["created_at"],
+            "title": "PR opened",
+            "detail": {"draft": pr.get("draft", False)},
+            "expandable": False,
+        })
+
+    # Add review events
+    review_events = extract_review_events(pr)
+    for review in review_events:
+        state_label = {
+            "APPROVED": "Approved",
+            "CHANGES_REQUESTED": "Changes requested",
+            "COMMENTED": "Commented",
+            "DISMISSED": "Review dismissed",
+        }.get(review["state"], review["state"])
+
+        events.append({
+            "type": "review",
+            "timestamp": review["submitted_at"],
+            "title": f"{review['reviewer']} - {state_label}",
+            "detail": review,
+            "expandable": bool(review["body"]),
+        })
+
+    # Add merged event
+    if pr.get("merged_at"):
+        events.append({
+            "type": "merged",
+            "timestamp": pr["merged_at"],
+            "title": "PR merged",
+            "detail": {},
+            "expandable": False,
+        })
+
+    # Sort all events by timestamp
+    events.sort(key=lambda e: e["timestamp"])
+
+    # Add time deltas relative to previous event
+    for i, event in enumerate(events):
+        if i == 0:
+            event["time_delta"] = "Start"
+        else:
+            prev_ts = events[i - 1]["timestamp"]
+            curr_ts = event["timestamp"]
+            delta_seconds = (curr_ts - prev_ts).total_seconds()
+            event["time_delta"] = format_time_delta(delta_seconds)
+
+    return events
+
+
+def generate_review_summary(pr: dict) -> str:
+    """Generate a summary of PR commentary.
+
+    Returns markdown-formatted summary with:
+    - Count of approvals, comments, change requests
+    - List of reviewers
+    - Key feedback themes
+    """
+    review_events = extract_review_events(pr)
+    human_reviews = [r for r in review_events if not r["is_bot"]]
+
+    if not human_reviews:
+        return "No human reviews on this PR."
+
+    # Count by state
+    approvals = [r for r in human_reviews if r["state"] == "APPROVED"]
+    changes_requested = [r for r in human_reviews if r["state"] == "CHANGES_REQUESTED"]
+    comments = [r for r in human_reviews if r["state"] == "COMMENTED"]
+
+    # Unique reviewers
+    reviewers = sorted(set(r["reviewer"] for r in human_reviews))
+
+    # Build summary
+    parts = []
+
+    # Reviewer list
+    parts.append(f"**Reviewers:** {', '.join(reviewers)}")
+
+    # Counts
+    counts = []
+    if approvals:
+        counts.append(f"{len(approvals)} approval{'s' if len(approvals) > 1 else ''}")
+    if changes_requested:
+        counts.append(f"{len(changes_requested)} change request{'s' if len(changes_requested) > 1 else ''}")
+    if comments:
+        counts.append(f"{len(comments)} comment{'s' if len(comments) > 1 else ''}")
+
+    if counts:
+        parts.append(f"**Activity:** {', '.join(counts)}")
+
+    # Look for common keywords in bodies
+    all_bodies = " ".join(r["body"].lower() for r in human_reviews if r["body"])
+    keywords_found = []
+    keyword_map = {
+        "lgtm": "LGTM",
+        "ship it": "Ship it",
+        "nit": "Minor nits",
+        "typo": "Typo fixes",
+        "test": "Testing feedback",
+        "security": "Security concerns",
+        "performance": "Performance considerations",
+    }
+    for keyword, label in keyword_map.items():
+        if keyword in all_bodies:
+            keywords_found.append(label)
+
+    if keywords_found:
+        parts.append(f"**Themes:** {', '.join(keywords_found)}")
+
+    return "\n\n".join(parts)

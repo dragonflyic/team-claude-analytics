@@ -80,7 +80,6 @@ class DatabaseClient:
         ALTER TABLE github_pull_requests ADD COLUMN IF NOT EXISTS first_claude_chat_at TIMESTAMPTZ;
 
         CREATE INDEX IF NOT EXISTS idx_pr_author ON github_pull_requests(author_login);
-        CREATE INDEX IF NOT EXISTS idx_claude_logs_git_branch ON claude_logs(git_branch);
         CREATE INDEX IF NOT EXISTS idx_pr_repo ON github_pull_requests(repo_full_name);
         CREATE INDEX IF NOT EXISTS idx_pr_created ON github_pull_requests(created_at);
         CREATE INDEX IF NOT EXISTS idx_pr_merged ON github_pull_requests(merged_at);
@@ -214,6 +213,10 @@ class DatabaseClient:
     ) -> dict[str, datetime | None]:
         """Get first Claude chat timestamps for multiple branches.
 
+        For each branch, finds all sessions that ever touched that branch,
+        then returns the earliest timestamp from any message in those sessions.
+        This captures work that started on main before switching to the feature branch.
+
         Returns a dict mapping branch name to earliest chat timestamp.
         """
         self.ensure_connected()
@@ -223,12 +226,22 @@ class DatabaseClient:
 
         try:
             with self._conn.cursor() as cur:
+                # For each branch, find sessions that touched it, then get min timestamp
+                # from ALL messages in those sessions
+                # Query from claude_raw_logs using JSON operators
                 cur.execute(
                     """
-                    SELECT git_branch, MIN(timestamp) as first_chat
-                    FROM claude_logs
-                    WHERE git_branch = ANY(%s)
-                    GROUP BY git_branch
+                    WITH branch_sessions AS (
+                        SELECT DISTINCT
+                            raw_json->>'gitBranch' as target_branch,
+                            raw_json->>'sessionId' as session_id
+                        FROM claude_raw_logs
+                        WHERE raw_json->>'gitBranch' = ANY(%s)
+                    )
+                    SELECT bs.target_branch, MIN((cl.raw_json->>'timestamp')::timestamptz) as first_chat
+                    FROM branch_sessions bs
+                    JOIN claude_raw_logs cl ON cl.raw_json->>'sessionId' = bs.session_id
+                    GROUP BY bs.target_branch
                     """,
                     (branches,),
                 )
@@ -236,3 +249,101 @@ class DatabaseClient:
         except psycopg2.Error as e:
             logger.error(f"Failed to get first Claude chats for branches: {e}")
             return {}
+
+    def get_pr_by_repo_and_number(
+        self, repo_full_name: str, pr_number: int
+    ) -> dict | None:
+        """Fetch a single PR by repo and number."""
+        self.ensure_connected()
+
+        try:
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT * FROM github_pull_requests
+                    WHERE repo_full_name = %s AND pr_number = %s
+                    """,
+                    (repo_full_name, pr_number),
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+        except psycopg2.Error as e:
+            logger.error(f"Failed to fetch PR {repo_full_name}#{pr_number}: {e}")
+            return None
+
+    def get_claude_sessions_for_branch(self, branch: str) -> list[dict]:
+        """Fetch all Claude chat messages for sessions that ever used this branch.
+
+        If a session ever has a message on the given branch, we include ALL
+        messages from that session (even ones from other branches like main).
+        This captures the full context of work that led to the feature branch.
+
+        Returns list of sessions, each containing:
+        - session_id: str
+        - first_message_at: datetime
+        - last_message_at: datetime
+        - message_count: int
+        - messages: list[dict] - ordered by timestamp
+        """
+        self.ensure_connected()
+
+        if not branch:
+            return []
+
+        try:
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Find all sessions that ever touched this branch,
+                # then get ALL messages from those sessions
+                # Query from claude_raw_logs using JSON operators
+                cur.execute(
+                    """
+                    SELECT
+                        raw_json->>'sessionId' as session_id,
+                        raw_json->>'uuid' as message_uuid,
+                        raw_json->>'type' as message_type,
+                        COALESCE(raw_json->'message'->>'role', raw_json->>'type') as role,
+                        COALESCE(raw_json->'message'->'content', raw_json->'content') as content,
+                        raw_json->'message'->>'model' as model,
+                        (raw_json->>'timestamp')::timestamptz as timestamp,
+                        (raw_json->'message'->'usage'->>'input_tokens')::int as input_tokens,
+                        (raw_json->'message'->'usage'->>'output_tokens')::int as output_tokens,
+                        raw_json->>'gitBranch' as git_branch
+                    FROM claude_raw_logs
+                    WHERE raw_json->>'sessionId' IN (
+                        SELECT DISTINCT raw_json->>'sessionId'
+                        FROM claude_raw_logs
+                        WHERE raw_json->>'gitBranch' = %s
+                    )
+                    ORDER BY raw_json->>'sessionId', (raw_json->>'timestamp')::timestamptz
+                    """,
+                    (branch,),
+                )
+                rows = cur.fetchall()
+
+            # Group by session_id
+            sessions_map: dict[str, list[dict]] = {}
+            for row in rows:
+                sid = row["session_id"]
+                if sid not in sessions_map:
+                    sessions_map[sid] = []
+                sessions_map[sid].append(dict(row))
+
+            # Build session objects
+            sessions = []
+            for session_id, messages in sessions_map.items():
+                if messages:
+                    sessions.append({
+                        "session_id": session_id,
+                        "first_message_at": messages[0]["timestamp"],
+                        "last_message_at": messages[-1]["timestamp"],
+                        "message_count": len(messages),
+                        "messages": messages,
+                    })
+
+            # Sort by first message time
+            sessions.sort(key=lambda s: s["first_message_at"])
+            return sessions
+
+        except psycopg2.Error as e:
+            logger.error(f"Failed to fetch Claude sessions for branch {branch}: {e}")
+            return []

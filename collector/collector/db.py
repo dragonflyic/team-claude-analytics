@@ -1,20 +1,17 @@
-"""PostgreSQL database client for storing Claude logs."""
+"""PostgreSQL database client for storing raw Claude logs."""
 
-import json
 import logging
-from typing import Any
 
 import psycopg2
 from psycopg2.extras import Json
 
 from .config import Config
-from .parser import LogEntry
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseClient:
-    """Client for storing log entries in PostgreSQL."""
+    """Client for storing raw log lines in PostgreSQL."""
 
     def __init__(self, config: Config):
         self.config = config
@@ -48,56 +45,28 @@ class DatabaseClient:
         if self._conn is None or self._conn.closed:
             self.connect()
 
-    def insert_entry(self, entry: LogEntry, collector_host: str) -> bool:
-        """Insert a log entry into the database.
+    def insert_raw_line(
+        self, collector_host: str, file_path: str, line_offset: int, raw_json: dict
+    ) -> bool:
+        """Insert a raw log line into the database.
 
         Returns True if inserted, False if already exists (duplicate).
         """
         self.ensure_connected()
 
-        # Convert content to JSON
-        content_json = None
-        if entry.content is not None:
-            content_json = Json(entry.content)
-
         try:
             with self._conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO claude_logs (
-                        session_id, message_uuid, parent_uuid, message_type,
-                        role, content, model, cwd, git_branch, slug, version,
-                        input_tokens, output_tokens, cache_read_tokens,
-                        cache_creation_tokens, timestamp, collector_host
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    )
-                    ON CONFLICT (message_uuid) DO NOTHING
+                    INSERT INTO claude_raw_logs (collector_host, file_path, line_offset, raw_json)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (collector_host, file_path, line_offset) DO NOTHING
                     """,
-                    (
-                        entry.session_id,
-                        entry.message_uuid,
-                        entry.parent_uuid,
-                        entry.message_type,
-                        entry.role,
-                        content_json,
-                        entry.model,
-                        entry.cwd,
-                        entry.git_branch,
-                        entry.slug,
-                        entry.version,
-                        entry.input_tokens,
-                        entry.output_tokens,
-                        entry.cache_read_tokens,
-                        entry.cache_creation_tokens,
-                        entry.timestamp,
-                        collector_host,
-                    ),
+                    (collector_host, file_path, line_offset, Json(raw_json)),
                 )
                 return cur.rowcount > 0
         except psycopg2.Error as e:
-            logger.error(f"Failed to insert entry {entry.message_uuid}: {e}")
-            # Try to reconnect on next operation
+            logger.error(f"Failed to insert line at {file_path}:{line_offset}: {e}")
             self._conn = None
             return False
 
@@ -106,33 +75,29 @@ class DatabaseClient:
         self.ensure_connected()
 
         schema_sql = """
-        CREATE TABLE IF NOT EXISTS claude_logs (
+        CREATE TABLE IF NOT EXISTS claude_raw_logs (
             id SERIAL PRIMARY KEY,
-            session_id VARCHAR(255) NOT NULL,
-            message_uuid VARCHAR(255) UNIQUE NOT NULL,
-            parent_uuid VARCHAR(255),
-            message_type VARCHAR(50),
-            role VARCHAR(50),
-            content JSONB,
-            model VARCHAR(100),
-            cwd TEXT,
-            git_branch VARCHAR(255),
-            slug VARCHAR(255),
-            version VARCHAR(50),
-            input_tokens INTEGER,
-            output_tokens INTEGER,
-            cache_read_tokens INTEGER,
-            cache_creation_tokens INTEGER,
-            timestamp TIMESTAMPTZ NOT NULL,
-            collector_host VARCHAR(255),
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            collector_host VARCHAR(255) NOT NULL,
+            file_path TEXT NOT NULL,
+            line_offset BIGINT NOT NULL,
+            raw_json JSONB NOT NULL,
+            collected_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(collector_host, file_path, line_offset)
         );
 
-        CREATE INDEX IF NOT EXISTS idx_session_id ON claude_logs(session_id);
-        CREATE INDEX IF NOT EXISTS idx_timestamp ON claude_logs(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_collector_host ON claude_logs(collector_host);
-        CREATE INDEX IF NOT EXISTS idx_message_type ON claude_logs(message_type);
-        CREATE INDEX IF NOT EXISTS idx_model ON claude_logs(model);
+        CREATE INDEX IF NOT EXISTS idx_raw_logs_host ON claude_raw_logs(collector_host);
+        CREATE INDEX IF NOT EXISTS idx_raw_logs_file ON claude_raw_logs(file_path);
+        CREATE INDEX IF NOT EXISTS idx_raw_logs_collected ON claude_raw_logs(collected_at);
+
+        -- JSON indexes for common query patterns
+        CREATE INDEX IF NOT EXISTS idx_raw_logs_session
+            ON claude_raw_logs((raw_json->>'sessionId'));
+        CREATE INDEX IF NOT EXISTS idx_raw_logs_timestamp
+            ON claude_raw_logs((raw_json->>'timestamp'));
+        CREATE INDEX IF NOT EXISTS idx_raw_logs_git_branch
+            ON claude_raw_logs((raw_json->>'gitBranch'));
+        CREATE INDEX IF NOT EXISTS idx_raw_logs_type
+            ON claude_raw_logs((raw_json->>'type'));
         """
 
         try:

@@ -1,5 +1,7 @@
 """HTML dashboard views."""
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -10,6 +12,21 @@ from ..services import metrics
 router = APIRouter(tags=["dashboard"])
 
 templates = Jinja2Templates(directory="dashboard/templates")
+
+
+def to_utc_iso(dt: datetime | None) -> str:
+    """Convert datetime to UTC ISO format with Z suffix for JavaScript."""
+    if dt is None:
+        return ""
+    # If timezone-aware, convert to UTC
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    # Return ISO format with Z suffix
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# Register the filter with Jinja2
+templates.env.filters["utc_iso"] = to_utc_iso
 
 
 def get_db() -> DatabaseClient | None:
@@ -156,6 +173,73 @@ async def cycle_time_view(
             "days": days,
             "format_hours": format_hours,
             "db_error": None,
+        },
+    )
+
+
+@router.get("/pr/{repo_full_name:path}/{pr_number:int}", response_class=HTMLResponse)
+async def pr_timeline_view(
+    request: Request,
+    repo_full_name: str,
+    pr_number: int,
+    db: DatabaseClient | None = Depends(get_db),
+    db_error: str | None = Depends(get_db_error),
+):
+    """PR timeline detail view with Claude chats and review history."""
+    if db is None:
+        return templates.TemplateResponse(
+            "pr_timeline.html",
+            {
+                "request": request,
+                "pr": None,
+                "timeline_events": [],
+                "claude_sessions": [],
+                "review_summary": "",
+                "db_error": db_error,
+                "not_found": False,
+                "extract_content_text": metrics.extract_content_text,
+            },
+        )
+
+    # Fetch PR data
+    pr = db.get_pr_by_repo_and_number(repo_full_name, pr_number)
+    if not pr:
+        return templates.TemplateResponse(
+            "pr_timeline.html",
+            {
+                "request": request,
+                "pr": None,
+                "timeline_events": [],
+                "claude_sessions": [],
+                "review_summary": "",
+                "db_error": None,
+                "not_found": True,
+                "extract_content_text": metrics.extract_content_text,
+            },
+        )
+
+    # Fetch Claude sessions - includes all messages from any session that ever touched the branch
+    claude_sessions = []
+    if pr.get("head_branch"):
+        claude_sessions = db.get_claude_sessions_for_branch(pr["head_branch"])
+
+    # Build timeline events
+    timeline_events = metrics.build_pr_timeline(pr, claude_sessions)
+
+    # Generate review summary
+    review_summary = metrics.generate_review_summary(pr)
+
+    return templates.TemplateResponse(
+        "pr_timeline.html",
+        {
+            "request": request,
+            "pr": pr,
+            "timeline_events": timeline_events,
+            "claude_sessions": claude_sessions,
+            "review_summary": review_summary,
+            "db_error": None,
+            "not_found": False,
+            "extract_content_text": metrics.extract_content_text,
         },
     )
 

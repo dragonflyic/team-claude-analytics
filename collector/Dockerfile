@@ -26,7 +26,9 @@ USER collector
 RUN mkdir -p /home/collector/.claude-collector
 
 # Default environment variables
+# v2: Changed state.json to state-v2.json so new collectors automatically
+# re-process all files into the new claude_raw_logs table
 ENV CLAUDE_PROJECTS_PATH=/claude-projects \
-    STATE_PATH=/home/collector/.claude-collector/state.json
+    STATE_PATH=/home/collector/.claude-collector/state-v2.json
 
 ENTRYPOINT ["python", "-m", "collector.main"]
