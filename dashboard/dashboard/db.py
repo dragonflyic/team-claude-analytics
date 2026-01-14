@@ -307,7 +307,11 @@ class DatabaseClient:
                         (raw_json->>'timestamp')::timestamptz as timestamp,
                         (raw_json->'message'->'usage'->>'input_tokens')::int as input_tokens,
                         (raw_json->'message'->'usage'->>'output_tokens')::int as output_tokens,
-                        raw_json->>'gitBranch' as git_branch
+                        raw_json->>'gitBranch' as git_branch,
+                        raw_json->>'agentId' as agent_id,
+                        (raw_json->>'isSidechain')::boolean as is_sidechain,
+                        (raw_json->>'isMeta')::boolean as is_meta,
+                        raw_json->'message'->'content'->0->>'type' as content_type
                     FROM claude_raw_logs
                     WHERE raw_json->>'sessionId' IN (
                         SELECT DISTINCT raw_json->>'sessionId'

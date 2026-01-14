@@ -272,8 +272,9 @@ def get_display_role(msg: dict) -> str:
     - "You" for actual human input
     - "Claude" for assistant responses
     - "System" for meta/system messages
-    - "Tool Output" for command output
+    - "Tool Output" for tool results and command output
     - "Command" for slash commands
+    - "Agent" for sub-agent prompts (Task tool)
     """
     msg_type = msg.get("message_type") or msg.get("type")
     role = msg.get("role")
@@ -283,11 +284,23 @@ def get_display_role(msg: dict) -> str:
     if msg_type == "assistant" or role == "assistant":
         return "Claude"
 
-    # For user-type messages, check the content to determine actual source
+    # For user-type messages, check various indicators
     if msg_type == "user" or role == "user":
+        # Sub-agent prompts (Task tool sending prompt to explore/other agents)
+        if msg.get("agent_id") or msg.get("is_sidechain"):
+            return "Agent"
+
+        # Meta/system messages
+        if msg.get("is_meta"):
+            return "System"
+
+        # Tool results (from API tool_use responses)
+        if msg.get("content_type") == "tool_result":
+            return "Tool Output"
+
+        # Check string content for XML tags
         content_str = str(content) if content else ""
 
-        # System/meta messages
         if content_str.startswith("<local-command-caveat>"):
             return "System"
         if content_str.startswith("<local-command-stdout>"):

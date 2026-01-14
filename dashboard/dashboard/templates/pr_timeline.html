@@ -81,7 +81,7 @@
                 <div class="session-messages">
                     {% for msg in event.detail.messages %}
                     {% set display_role = get_display_role(msg) %}
-                    {% set role_class = 'assistant' if display_role == 'Claude' else ('user' if display_role == 'You' else 'system') %}
+                    {% set role_class = 'assistant' if display_role == 'Claude' else ('user' if display_role == 'You' else ('agent' if display_role == 'Agent' else 'system')) %}
                     <div class="chat-message chat-message--{{ role_class }}">
                         <div class="msg-meta">
                             <span class="role">{{ display_role }}</span>
@@ -123,7 +123,7 @@
     <div class="session-messages">
         {% for msg in session.messages %}
         {% set display_role = get_display_role(msg) %}
-        {% set role_class = 'assistant' if display_role == 'Claude' else ('user' if display_role == 'You' else 'system') %}
+        {% set role_class = 'assistant' if display_role == 'Claude' else ('user' if display_role == 'You' else ('agent' if display_role == 'Agent' else 'system')) %}
         <div class="chat-message chat-message--{{ role_class }}">
             <div class="msg-meta">
                 <span class="role">{{ display_role }}</span>
