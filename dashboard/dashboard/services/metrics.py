@@ -80,6 +80,7 @@ def calculate_pr_cycle_time(pr: dict, filter_bots: bool = True) -> dict:
     If filter_bots is True, uses human-only review times from raw_data.
     Otherwise uses the stored first_review_at/approved_at timestamps.
     """
+    first_commit = pr.get("first_commit_at")
     created = pr.get("created_at")
     merged = pr.get("merged_at")
 
@@ -89,16 +90,30 @@ def calculate_pr_cycle_time(pr: dict, filter_bots: bool = True) -> dict:
         first_review = pr.get("first_review_at")
         approved = pr.get("approved_at")
 
+    # Calculate hours before PR (first commit to PR creation)
+    # If first commit is after PR creation (rebases/force-pushes), show None
+    hours_before_pr = hours_between(first_commit, created)
+    if hours_before_pr is not None and hours_before_pr < 0:
+        hours_before_pr = None
+
+    # For total time, use the earlier of first_commit or created as start
+    if first_commit and created:
+        start_time = min(first_commit, created)
+    else:
+        start_time = created or first_commit
+
     return {
         "pr_number": pr["pr_number"],
         "title": pr["title"],
         "author": pr["author_login"],
+        "first_commit_at": first_commit,
         "created_at": created,
         "merged_at": merged,
+        "hours_before_pr": hours_before_pr,
         "hours_to_first_review": hours_between(created, first_review),
         "hours_to_approval": hours_between(created, approved),  # Total time from creation to approval
         "hours_to_merge": hours_between(approved, merged),
-        "total_hours": hours_between(created, merged),
+        "total_hours": hours_between(start_time, merged),
     }
 
 
@@ -114,6 +129,7 @@ def get_cycle_time_metrics(
     if not prs:
         return {
             "count": 0,
+            "avg_hours_before_pr": None,
             "avg_hours_to_first_review": None,
             "avg_hours_to_approval": None,
             "avg_hours_to_merge": None,
@@ -137,6 +153,7 @@ def get_cycle_time_metrics(
 
     return {
         "count": len(prs),
+        "avg_hours_before_pr": avg([ct["hours_before_pr"] for ct in cycle_times]),
         "avg_hours_to_first_review": avg([ct["hours_to_first_review"] for ct in cycle_times]),
         "avg_hours_to_approval": avg([ct["hours_to_approval"] for ct in cycle_times]),
         "avg_hours_to_merge": avg([ct["hours_to_merge"] for ct in cycle_times]),

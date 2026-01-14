@@ -61,6 +61,7 @@ class DatabaseClient:
             state VARCHAR(50),
             draft BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMPTZ NOT NULL,
+            first_commit_at TIMESTAMPTZ,
             first_review_at TIMESTAMPTZ,
             approved_at TIMESTAMPTZ,
             merged_at TIMESTAMPTZ,
@@ -74,6 +75,8 @@ class DatabaseClient:
             synced_at TIMESTAMPTZ DEFAULT NOW(),
             UNIQUE(repo_full_name, pr_number)
         );
+
+        ALTER TABLE github_pull_requests ADD COLUMN IF NOT EXISTS first_commit_at TIMESTAMPTZ;
 
         CREATE INDEX IF NOT EXISTS idx_pr_author ON github_pull_requests(author_login);
         CREATE INDEX IF NOT EXISTS idx_pr_repo ON github_pull_requests(repo_full_name);
@@ -100,20 +103,21 @@ class DatabaseClient:
                     """
                     INSERT INTO github_pull_requests (
                         repo_full_name, pr_number, title, author_login, state,
-                        draft, created_at, first_review_at, approved_at, merged_at,
-                        closed_at, additions, deletions, changed_files, head_branch,
-                        base_branch, raw_data, synced_at
+                        draft, created_at, first_commit_at, first_review_at, approved_at,
+                        merged_at, closed_at, additions, deletions, changed_files,
+                        head_branch, base_branch, raw_data, synced_at
                     ) VALUES (
                         %(repo_full_name)s, %(pr_number)s, %(title)s, %(author_login)s,
-                        %(state)s, %(draft)s, %(created_at)s, %(first_review_at)s,
-                        %(approved_at)s, %(merged_at)s, %(closed_at)s, %(additions)s,
-                        %(deletions)s, %(changed_files)s, %(head_branch)s, %(base_branch)s,
-                        %(raw_data)s, NOW()
+                        %(state)s, %(draft)s, %(created_at)s, %(first_commit_at)s,
+                        %(first_review_at)s, %(approved_at)s, %(merged_at)s, %(closed_at)s,
+                        %(additions)s, %(deletions)s, %(changed_files)s, %(head_branch)s,
+                        %(base_branch)s, %(raw_data)s, NOW()
                     )
                     ON CONFLICT (repo_full_name, pr_number) DO UPDATE SET
                         title = EXCLUDED.title,
                         state = EXCLUDED.state,
                         draft = EXCLUDED.draft,
+                        first_commit_at = EXCLUDED.first_commit_at,
                         first_review_at = EXCLUDED.first_review_at,
                         approved_at = EXCLUDED.approved_at,
                         merged_at = EXCLUDED.merged_at,

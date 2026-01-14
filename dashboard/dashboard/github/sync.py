@@ -58,6 +58,19 @@ async def sync_repo(
             # Get reviews to find first review and approval timestamps
             reviews = await github_client.get_pull_reviews(owner, repo, pr["number"])
 
+            # Get commits to find first commit timestamp
+            commits = await github_client.get_pull_commits(owner, repo, pr["number"])
+            first_commit_at = None
+            if commits:
+                # Sort by committer date and get the earliest
+                sorted_commits = sorted(
+                    commits,
+                    key=lambda c: c.get("commit", {}).get("committer", {}).get("date") or "",
+                )
+                if sorted_commits:
+                    first_commit_date = sorted_commits[0].get("commit", {}).get("committer", {}).get("date")
+                    first_commit_at = parse_timestamp(first_commit_date)
+
             # Store all reviews - filtering happens at analysis time
             first_review_at = None
             approved_at = None
@@ -86,6 +99,7 @@ async def sync_repo(
                 "state": state,
                 "draft": pr.get("draft", False),
                 "created_at": parse_timestamp(pr["created_at"]),
+                "first_commit_at": first_commit_at,
                 "first_review_at": first_review_at,
                 "approved_at": approved_at,
                 "merged_at": parse_timestamp(pr.get("merged_at")),

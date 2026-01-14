@@ -92,3 +92,11 @@ class GitHubClient:
         response = await self._client.get(url)
         response.raise_for_status()
         return response.json()
+
+    async def get_pull_commits(self, owner: str, repo: str, pr_number: int) -> list[dict]:
+        """Fetch commits for a specific pull request."""
+        url = f"/repos/{owner}/{repo}/pulls/{pr_number}/commits"
+        commits = []
+        async for commit in self._paginate(url):
+            commits.append(commit)
+        return commits

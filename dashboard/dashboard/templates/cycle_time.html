@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>PR Cycle Time</h1>
-<p class="secondary">Time from PR creation to merge, broken down by stage</p>
+<p class="secondary">Time from first commit to merge, broken down by stage</p>
 
 <form class="filters" method="get">
     <div>
@@ -40,6 +40,11 @@
     <div class="card">
         <h3>PRs Analyzed</h3>
         <div class="value">{{ cycle_time.count }}</div>
+    </div>
+    <div class="card">
+        <h3>Avg Time Before PR</h3>
+        <div class="value">{{ format_hours(cycle_time.avg_hours_before_pr) }}</div>
+        <small class="secondary">First commit → PR created</small>
     </div>
     <div class="card">
         <h3>Avg Time to First Review</h3>
@@ -78,10 +83,11 @@
         <tr>
             <th>PR</th>
             <th>Author</th>
+            <th>First Commit → PR</th>
             <th>To First Review</th>
             <th>To Approval</th>
             <th>After Approval</th>
-            <th>Total</th>
+            <th>To Merged</th>
         </tr>
     </thead>
     <tbody>
@@ -89,6 +95,7 @@
         <tr>
             <td class="pr-title" title="{{ pr.title }}">#{{ pr.pr_number }} {{ pr.title }}</td>
             <td>{{ pr.author }}</td>
+            <td>{{ format_hours(pr.hours_before_pr) }}</td>
             <td>{{ format_hours(pr.hours_to_first_review) }}</td>
             <td>{{ format_hours(pr.hours_to_approval) }}</td>
             <td>{{ format_hours(pr.hours_to_merge) }}</td>
@@ -112,17 +119,18 @@ const ctx = document.getElementById('cycleTimeChart').getContext('2d');
 new Chart(ctx, {
     type: 'bar',
     data: {
-        labels: ['To First Review', 'To Approval', 'After Approval', 'Total'],
+        labels: ['First Commit → PR', 'To First Review', 'To Approval', 'After Approval', 'To Merged'],
         datasets: [
             {
                 label: 'Hours',
                 data: [
+                    {{ cycle_time.avg_hours_before_pr or 0 }},
                     {{ cycle_time.avg_hours_to_first_review or 0 }},
                     {{ cycle_time.avg_hours_to_approval or 0 }},
                     {{ cycle_time.avg_hours_to_merge or 0 }},
                     {{ cycle_time.avg_total_hours or 0 }}
                 ],
-                backgroundColor: ['#ef4444', '#eab308', '#22c55e', '#6366f1'],
+                backgroundColor: ['#3b82f6', '#ef4444', '#eab308', '#22c55e', '#6366f1'],
             }
         ]
     },
