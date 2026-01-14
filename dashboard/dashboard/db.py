@@ -292,9 +292,21 @@ class DatabaseClient:
 
         try:
             with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Find all sessions that ever touched this branch,
-                # then get ALL messages from those sessions
-                # Query from claude_raw_logs using JSON operators
+                # Step 1: Find all session IDs that ever touched this branch (fast, uses index)
+                cur.execute(
+                    """
+                    SELECT DISTINCT raw_json->>'sessionId' as session_id
+                    FROM claude_raw_logs
+                    WHERE raw_json->>'gitBranch' = %s
+                    """,
+                    (branch,),
+                )
+                session_ids = [row["session_id"] for row in cur.fetchall()]
+
+                if not session_ids:
+                    return []
+
+                # Step 2: Get ALL messages from those sessions using ANY (much faster than IN subquery)
                 cur.execute(
                     """
                     SELECT
@@ -313,14 +325,10 @@ class DatabaseClient:
                         (raw_json->>'isMeta')::boolean as is_meta,
                         raw_json->'message'->'content'->0->>'type' as content_type
                     FROM claude_raw_logs
-                    WHERE raw_json->>'sessionId' IN (
-                        SELECT DISTINCT raw_json->>'sessionId'
-                        FROM claude_raw_logs
-                        WHERE raw_json->>'gitBranch' = %s
-                    )
+                    WHERE raw_json->>'sessionId' = ANY(%s)
                     ORDER BY raw_json->>'sessionId', (raw_json->>'timestamp')::timestamptz
                     """,
-                    (branch,),
+                    (session_ids,),
                 )
                 rows = cur.fetchall()
 
