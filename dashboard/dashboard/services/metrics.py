@@ -45,6 +45,7 @@ def parse_review_timestamp(ts: str | None) -> datetime | None:
 def get_human_review_times(pr: dict) -> tuple[datetime | None, datetime | None]:
     """Extract first human review and approval times from raw_data.
 
+    Handles both GraphQL and REST API response formats.
     Filters out bot reviewers to get accurate human review metrics.
     """
     raw_data = pr.get("raw_data") or {}
@@ -53,15 +54,27 @@ def get_human_review_times(pr: dict) -> tuple[datetime | None, datetime | None]:
     first_review_at = None
     approved_at = None
 
-    # Sort reviews by timestamp
-    sorted_reviews = sorted(reviews, key=lambda r: r.get("submitted_at") or "")
+    # Sort reviews by timestamp (handle both GraphQL and REST formats)
+    sorted_reviews = sorted(
+        reviews,
+        key=lambda r: r.get("submittedAt") or r.get("submitted_at") or ""
+    )
 
     for review in sorted_reviews:
-        reviewer = review.get("user", {}).get("login", "")
+        # Handle both GraphQL (author) and REST (user) formats
+        reviewer = (
+            review.get("author", {}).get("login")
+            or review.get("user", {}).get("login")
+            or ""
+        )
         if is_bot_user(reviewer):
             continue
 
-        submitted = parse_review_timestamp(review.get("submitted_at"))
+        # Handle both GraphQL (submittedAt) and REST (submitted_at) formats
+        submitted = (
+            parse_review_timestamp(review.get("submittedAt"))
+            or parse_review_timestamp(review.get("submitted_at"))
+        )
         if not submitted:
             continue
 
@@ -351,6 +364,10 @@ def extract_content_text(content: Any) -> str:
 def extract_review_events(pr: dict) -> list[dict]:
     """Extract review events from raw_data.reviews.
 
+    Handles both GraphQL and REST API response formats:
+    - GraphQL: author.login, submittedAt (camelCase)
+    - REST: user.login, submitted_at (snake_case)
+
     Returns sorted list of review events with:
     - reviewer: str
     - state: str (COMMENTED, APPROVED, CHANGES_REQUESTED, DISMISSED)
@@ -363,8 +380,17 @@ def extract_review_events(pr: dict) -> list[dict]:
 
     events = []
     for review in reviews:
-        reviewer = review.get("user", {}).get("login", "unknown")
-        submitted = parse_review_timestamp(review.get("submitted_at"))
+        # Handle both GraphQL (author) and REST (user) formats
+        reviewer = (
+            review.get("author", {}).get("login")
+            or review.get("user", {}).get("login")
+            or "unknown"
+        )
+        # Handle both GraphQL (submittedAt) and REST (submitted_at) formats
+        submitted = (
+            parse_review_timestamp(review.get("submittedAt"))
+            or parse_review_timestamp(review.get("submitted_at"))
+        )
         if not submitted:
             continue
 
