@@ -271,6 +271,29 @@ class DatabaseClient:
             logger.error(f"Failed to fetch PR {repo_full_name}#{pr_number}: {e}")
             return None
 
+    def get_existing_prs_for_repo(self, repo_full_name: str) -> dict[int, dict]:
+        """Get existing PRs for a repo, keyed by PR number.
+
+        Returns dict mapping pr_number to {state, synced_at, merged_at, closed_at}.
+        Used for incremental sync to skip PRs that don't need updating.
+        """
+        self.ensure_connected()
+
+        try:
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT pr_number, state, synced_at, merged_at, closed_at
+                    FROM github_pull_requests
+                    WHERE repo_full_name = %s
+                    """,
+                    (repo_full_name,),
+                )
+                return {row["pr_number"]: dict(row) for row in cur.fetchall()}
+        except psycopg2.Error as e:
+            logger.error(f"Failed to fetch existing PRs for {repo_full_name}: {e}")
+            return {}
+
     def get_claude_sessions_for_branch(self, branch: str) -> list[dict]:
         """Fetch all Claude chat messages for sessions that ever used this branch.
 

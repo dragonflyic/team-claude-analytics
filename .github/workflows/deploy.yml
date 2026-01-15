@@ -1,0 +1,111 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  PROJECT_NAME: claude-analytics
+  # ECR repositories
+  DASHBOARD_ECR_REPO: claude-analytics-dashboard
+  COLLECTOR_ECR_REPO: claude-log-collector
+  # ECS
+  ECS_CLUSTER: claude-analytics-cluster
+  ECS_SERVICE: claude-analytics-dashboard
+  ECS_TASK_FAMILY: claude-analytics-dashboard
+
+jobs:
+  build-and-push:
+    name: Build and Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      dashboard_image: ${{ steps.build-dashboard.outputs.image }}
+      collector_image: ${{ steps.build-collector.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR (Private)
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Login to Amazon ECR Public
+        id: login-ecr-public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      - name: Build and push Dashboard image
+        id: build-dashboard
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd dashboard
+          docker build -t $ECR_REGISTRY/$DASHBOARD_ECR_REPO:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$DASHBOARD_ECR_REPO:$IMAGE_TAG $ECR_REGISTRY/$DASHBOARD_ECR_REPO:latest
+          docker push $ECR_REGISTRY/$DASHBOARD_ECR_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$DASHBOARD_ECR_REPO:latest
+          echo "image=$ECR_REGISTRY/$DASHBOARD_ECR_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build and push Collector image
+        id: build-collector
+        env:
+          ECR_PUBLIC_REGISTRY: public.ecr.aws
+          ECR_PUBLIC_ALIAS: ${{ secrets.ECR_PUBLIC_ALIAS }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd collector
+          docker build -t $ECR_PUBLIC_REGISTRY/$ECR_PUBLIC_ALIAS/$COLLECTOR_ECR_REPO:$IMAGE_TAG .
+          docker tag $ECR_PUBLIC_REGISTRY/$ECR_PUBLIC_ALIAS/$COLLECTOR_ECR_REPO:$IMAGE_TAG $ECR_PUBLIC_REGISTRY/$ECR_PUBLIC_ALIAS/$COLLECTOR_ECR_REPO:latest
+          docker push $ECR_PUBLIC_REGISTRY/$ECR_PUBLIC_ALIAS/$COLLECTOR_ECR_REPO:$IMAGE_TAG
+          docker push $ECR_PUBLIC_REGISTRY/$ECR_PUBLIC_ALIAS/$COLLECTOR_ECR_REPO:latest
+          echo "image=$ECR_PUBLIC_REGISTRY/$ECR_PUBLIC_ALIAS/$COLLECTOR_ECR_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  deploy-dashboard:
+    name: Deploy Dashboard to ECS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition $ECS_TASK_FAMILY \
+            --query taskDefinition > task-definition.json
+
+      - name: Update image in task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: dashboard
+          image: ${{ needs.build-and-push.outputs.dashboard_image }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

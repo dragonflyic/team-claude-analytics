@@ -45,6 +45,11 @@ output "ecr_registry_id" {
   value       = aws_ecrpublic_repository.collector.registry_id
 }
 
+output "ecr_public_alias" {
+  description = "Public ECR alias (add to GitHub secrets as ECR_PUBLIC_ALIAS)"
+  value       = regex("public\\.ecr\\.aws/([^/]+)", aws_ecrpublic_repository.collector.repository_uri)[0]
+}
+
 # Dashboard outputs
 output "dashboard_url" {
   description = "Dashboard URL (ALB DNS name)"

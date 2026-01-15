@@ -97,3 +97,15 @@ variable "dashboard_desired_count" {
   type        = number
   default     = 1
 }
+
+# GitHub Actions CI/CD variables
+variable "github_org" {
+  description = "GitHub organization or username that owns the repository"
+  type        = string
+}
+
+variable "github_repo" {
+  description = "GitHub repository name"
+  type        = string
+  default     = "team-claude-analytics"
+}
