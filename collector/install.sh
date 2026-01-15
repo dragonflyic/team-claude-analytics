@@ -47,6 +47,12 @@ if [ -z "$DB_PASSWORD" ]; then
     exit 1
 fi
 
+# Create collector directory and write hostname file
+# This persists the host machine's name so the container can read it
+# (socket.gethostname() inside container returns container ID)
+mkdir -p "$HOME/.claude-collector"
+hostname > "$HOME/.claude-collector/hostname"
+
 # Pull latest image
 echo "Pulling latest collector image..."
 docker pull "$IMAGE"
