@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Human Interventions - Developer Productivity Dashboard{% endblock %}
+
+{% block content %}
+<h1>Human Interventions</h1>
+<p class="secondary">All instances where a human typed input into Claude sessions</p>
+
+<form class="filters" method="get">
+    <div>
+        <label for="author">Author</label>
+        <select name="author" id="author">
+            <option value="">All Authors</option>
+            {% for c in collectors %}
+            <option value="{{ c }}" {% if selected_author == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="days">Time Range</label>
+        <select name="days" id="days">
+            <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 days</option>
+            <option value="14" {% if days == 14 %}selected{% endif %}>Last 14 days</option>
+            <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+            <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+        </select>
+    </div>
+</form>
+
+<div class="metrics-grid">
+    <div class="card">
+        <h3>Total Interventions</h3>
+        <div class="value">{{ interventions|length }}</div>
+    </div>
+</div>
+
+{% if db_error %}
+<article class="pico-background-red-500">
+    <p>Database error: {{ db_error }}</p>
+</article>
+{% elif interventions %}
+<div class="interventions-list">
+    {% for msg in interventions %}
+    <article class="intervention-card">
+        <header>
+            <div class="intervention-meta">
+                <span class="author">{{ msg.author }}</span>
+                <span class="branch" title="Git branch">{{ msg.git_branch or 'unknown branch' }}</span>
+                <time data-utc="{{ msg.timestamp | utc_iso }}">{{ msg.timestamp.strftime('%Y-%m-%d %H:%M') }}</time>
+            </div>
+        </header>
+        <div class="intervention-content">
+            {{ msg.content[:500] }}{% if msg.content|length > 500 %}...{% endif %}
+        </div>
+        <details class="context-details"
+                 hx-get="/partials/intervention-context/{{ msg.session_id }}/{{ msg.message_uuid }}"
+                 hx-trigger="toggle once"
+                 hx-target="find .context-content"
+                 hx-swap="innerHTML">
+            <summary>Show context</summary>
+            <div class="context-content">
+                <p class="secondary">Loading...</p>
+            </div>
+        </details>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<article>
+    <p>No human interventions found in the selected time range.</p>
+</article>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Convert UTC timestamps to local time
+document.querySelectorAll('time[data-utc]').forEach(function(el) {
+    const utc = el.getAttribute('data-utc');
+    if (utc) {
+        const date = new Date(utc);
+        el.textContent = date.toLocaleString();
+    }
+});
+</script>
+{% endblock %}

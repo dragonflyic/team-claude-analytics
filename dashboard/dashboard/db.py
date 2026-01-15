@@ -382,3 +382,187 @@ class DatabaseClient:
         except psycopg2.Error as e:
             logger.error(f"Failed to fetch Claude sessions for branch {branch}: {e}")
             return []
+
+    def get_human_interventions(
+        self,
+        days: int = 30,
+        author: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Fetch all human input messages from Claude sessions.
+
+        Returns messages where a human actually typed something (not tool results,
+        system messages, agent prompts, or slash commands).
+
+        Each message includes surrounding context (messages before/after in same session).
+        """
+        self.ensure_connected()
+
+        try:
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Fast query using indexed columns only
+                # Filter by type (indexed) and collected_at (indexed)
+                # Do additional filtering in Python
+
+                if author:
+                    query = f"""
+                        SELECT
+                            raw_json->>'sessionId' as session_id,
+                            raw_json->>'uuid' as message_uuid,
+                            raw_json->>'agentId' as agent_id,
+                            raw_json->>'isSidechain' as is_sidechain,
+                            raw_json->>'isMeta' as is_meta,
+                            COALESCE(raw_json->'message'->'content'#>>'{{}}', raw_json->>'content', '') as content,
+                            raw_json->'message'->'content'->0->>'type' as content_type,
+                            collected_at as timestamp,
+                            raw_json->>'gitBranch' as git_branch,
+                            collector_host as author
+                        FROM claude_raw_logs
+                        WHERE raw_json->>'type' = 'user'
+                          AND collected_at > NOW() - INTERVAL '{days} days'
+                          AND collector_host = %s
+                        ORDER BY collected_at DESC
+                        LIMIT {limit * 5}
+                    """
+                    params = (author,)
+                else:
+                    query = f"""
+                        SELECT
+                            raw_json->>'sessionId' as session_id,
+                            raw_json->>'uuid' as message_uuid,
+                            raw_json->>'agentId' as agent_id,
+                            raw_json->>'isSidechain' as is_sidechain,
+                            raw_json->>'isMeta' as is_meta,
+                            COALESCE(raw_json->'message'->'content'#>>'{{}}', raw_json->>'content', '') as content,
+                            raw_json->'message'->'content'->0->>'type' as content_type,
+                            collected_at as timestamp,
+                            raw_json->>'gitBranch' as git_branch,
+                            collector_host as author
+                        FROM claude_raw_logs
+                        WHERE raw_json->>'type' = 'user'
+                          AND collected_at > NOW() - INTERVAL '{days} days'
+                        ORDER BY collected_at DESC
+                        LIMIT {limit * 5}
+                    """
+                    params = ()
+
+                cur.execute(query, params)
+                candidates = [dict(row) for row in cur.fetchall()]
+
+                # Python-side filtering (faster than regex in SQL)
+                # Patterns that indicate system-generated messages, not human input
+                system_patterns = [
+                    "This session is being continued from a previous conversation",
+                    "```You (This Message)",
+                    "The summary below covers the earlier portion",
+                    "<system-reminder>",
+                    "Background bash ",
+                    "has new output:",
+                ]
+
+                messages = []
+                for msg in candidates:
+                    # Skip agent messages
+                    if msg.get("agent_id"):
+                        continue
+                    # Skip sidechain messages (agent prompts)
+                    if msg.get("is_sidechain") == "true":
+                        continue
+                    # Skip meta/system messages
+                    if msg.get("is_meta") == "true":
+                        continue
+                    # Skip tool results
+                    if msg.get("content_type") == "tool_result":
+                        continue
+                    content = msg.get("content", "") or ""
+                    # Skip XML-tagged content (system messages, tool output)
+                    if content.startswith("<"):
+                        continue
+                    # Skip system-generated messages (compaction, reminders, etc.)
+                    if any(pattern in content for pattern in system_patterns):
+                        continue
+                    # Skip empty messages
+                    if not content.strip():
+                        continue
+                    messages.append(msg)
+                    if len(messages) >= limit:
+                        break
+
+                # Context will be loaded on-demand via separate endpoint
+                for msg in messages:
+                    msg["context_before"] = []
+                    msg["context_after"] = []
+
+                return messages
+
+        except psycopg2.Error as e:
+            logger.error(f"Failed to fetch human interventions: {e}")
+            return []
+
+    def get_message_context(self, session_id: str, message_uuid: str) -> dict:
+        """Fetch context (surrounding messages) for a specific message.
+
+        Returns dict with context_before and context_after lists.
+        """
+        self.ensure_connected()
+
+        try:
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get all messages from this session ordered by timestamp
+                cur.execute(
+                    """
+                    SELECT
+                        raw_json->>'uuid' as message_uuid,
+                        raw_json->>'type' as message_type,
+                        COALESCE(raw_json->'message'->>'role', raw_json->>'type') as role,
+                        COALESCE(raw_json->'message'->'content', raw_json->'content') as content,
+                        (raw_json->>'timestamp')::timestamptz as timestamp,
+                        raw_json->>'gitBranch' as git_branch,
+                        raw_json->>'agentId' as agent_id,
+                        (raw_json->>'isSidechain')::boolean as is_sidechain,
+                        (raw_json->>'isMeta')::boolean as is_meta,
+                        raw_json->'message'->'content'->0->>'type' as content_type
+                    FROM claude_raw_logs
+                    WHERE raw_json->>'sessionId' = %s
+                    ORDER BY (raw_json->>'timestamp')::timestamptz
+                    """,
+                    (session_id,),
+                )
+                messages = [dict(row) for row in cur.fetchall()]
+
+                # Find the target message index
+                idx = None
+                for i, m in enumerate(messages):
+                    if m["message_uuid"] == message_uuid:
+                        idx = i
+                        break
+
+                if idx is None:
+                    return {"context_before": [], "context_after": []}
+
+                # Get 2 messages before and 2 after
+                start = max(0, idx - 2)
+                end = min(len(messages), idx + 3)
+
+                return {
+                    "context_before": messages[start:idx],
+                    "context_after": messages[idx + 1:end],
+                }
+
+        except psycopg2.Error as e:
+            logger.error(f"Failed to fetch message context: {e}")
+            return {"context_before": [], "context_after": []}
+
+    def get_collectors(self) -> list[str]:
+        """Get list of unique collector hosts (authors/machines)."""
+        self.ensure_connected()
+
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "SELECT DISTINCT collector_host FROM claude_raw_logs ORDER BY collector_host"
+                )
+                return [row[0] for row in cur.fetchall()]
+        except psycopg2.Error as e:
+            logger.error(f"Failed to fetch collectors: {e}")
+            return []

@@ -177,6 +177,48 @@ async def cycle_time_view(
     )
 
 
+@router.get("/interventions", response_class=HTMLResponse)
+async def interventions_view(
+    request: Request,
+    author: str | None = None,
+    days: int = Query(30, ge=1, le=365),
+    db: DatabaseClient | None = Depends(get_db),
+    db_error: str | None = Depends(get_db_error),
+):
+    """Human interventions view - shows all human input in Claude sessions."""
+    if db is None:
+        return templates.TemplateResponse(
+            "interventions.html",
+            {
+                "request": request,
+                "interventions": [],
+                "collectors": [],
+                "selected_author": author,
+                "days": days,
+                "db_error": db_error,
+                "extract_content_text": metrics.extract_content_text,
+                "get_display_role": metrics.get_display_role,
+            },
+        )
+
+    interventions = db.get_human_interventions(days=days, author=author)
+    collectors = db.get_collectors()
+
+    return templates.TemplateResponse(
+        "interventions.html",
+        {
+            "request": request,
+            "interventions": interventions,
+            "collectors": collectors,
+            "selected_author": author,
+            "days": days,
+            "db_error": None,
+            "extract_content_text": metrics.extract_content_text,
+            "get_display_role": metrics.get_display_role,
+        },
+    )
+
+
 @router.get("/pr/{repo_full_name:path}/{pr_number:int}", response_class=HTMLResponse)
 async def pr_timeline_view(
     request: Request,
@@ -248,6 +290,31 @@ async def pr_timeline_view(
 
 
 # HTMX partials for dynamic updates
+
+@router.get("/partials/intervention-context/{session_id}/{message_uuid}", response_class=HTMLResponse)
+async def partial_intervention_context(
+    request: Request,
+    session_id: str,
+    message_uuid: str,
+    db: DatabaseClient | None = Depends(get_db),
+):
+    """Partial template for loading message context on-demand (HTMX)."""
+    if db is None:
+        return HTMLResponse("<p>Database unavailable</p>")
+
+    context = db.get_message_context(session_id, message_uuid)
+
+    return templates.TemplateResponse(
+        "partials/intervention_context.html",
+        {
+            "request": request,
+            "context_before": context["context_before"],
+            "context_after": context["context_after"],
+            "extract_content_text": metrics.extract_content_text,
+            "get_display_role": metrics.get_display_role,
+        },
+    )
+
 
 @router.get("/partials/summary", response_class=HTMLResponse)
 async def partial_summary(

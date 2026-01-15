@@ -1,0 +1,29 @@
+<div class="context-messages">
+    {% for ctx in context_before %}
+    {% set display_role = get_display_role(ctx) %}
+    {% set role_class = 'assistant' if display_role == 'Claude' else ('user' if display_role == 'You' else ('agent' if display_role == 'Agent' else 'system')) %}
+    <div class="chat-message chat-message--{{ role_class }} context-msg">
+        <div class="msg-meta">
+            <span class="role">{{ display_role }}</span>
+            <time>{{ ctx.timestamp.strftime('%H:%M:%S') if ctx.timestamp else '' }}</time>
+        </div>
+        <div class="chat-content">{{ extract_content_text(ctx.content)[:500] }}{% if extract_content_text(ctx.content)|length > 500 %}...{% endif %}</div>
+    </div>
+    {% endfor %}
+
+    {% if not context_before and not context_after %}
+    <p class="secondary">No surrounding context available</p>
+    {% endif %}
+
+    {% for ctx in context_after %}
+    {% set display_role = get_display_role(ctx) %}
+    {% set role_class = 'assistant' if display_role == 'Claude' else ('user' if display_role == 'You' else ('agent' if display_role == 'Agent' else 'system')) %}
+    <div class="chat-message chat-message--{{ role_class }} context-msg">
+        <div class="msg-meta">
+            <span class="role">{{ display_role }}</span>
+            <time>{{ ctx.timestamp.strftime('%H:%M:%S') if ctx.timestamp else '' }}</time>
+        </div>
+        <div class="chat-content">{{ extract_content_text(ctx.content)[:500] }}{% if extract_content_text(ctx.content)|length > 500 %}...{% endif %}</div>
+    </div>
+    {% endfor %}
+</div>

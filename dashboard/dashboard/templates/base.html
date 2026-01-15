@@ -214,6 +214,76 @@
             margin-left: 0.5rem;
         }
 
+        /* Interventions page styles */
+        .interventions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .intervention-card {
+            margin-bottom: 0;
+        }
+        .intervention-card header {
+            padding-bottom: 0.5rem;
+            margin-bottom: 0.75rem;
+            border-bottom: 1px solid var(--muted-border-color);
+        }
+        .intervention-meta {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+            font-size: 0.85rem;
+        }
+        .intervention-meta .author {
+            font-weight: 600;
+            color: var(--primary);
+        }
+        .intervention-meta .branch {
+            background: #e0e7ff;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+        .intervention-meta time {
+            color: var(--muted-color);
+        }
+        .intervention-content {
+            white-space: pre-wrap;
+            font-family: var(--font-family);
+            line-height: 1.5;
+            padding: 0.75rem;
+            background: #f8fafc;
+            border-radius: var(--border-radius);
+            border-left: 3px solid var(--primary);
+        }
+        .context-details {
+            margin-top: 1rem;
+        }
+        .context-details summary {
+            cursor: pointer;
+            color: var(--muted-color);
+            font-size: 0.85rem;
+        }
+        .context-messages {
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            background: #fafafa;
+            border-radius: var(--border-radius);
+        }
+        .context-msg {
+            opacity: 0.8;
+            font-size: 0.85rem;
+        }
+        .context-msg .chat-content {
+            max-height: 150px;
+        }
+        .current-msg {
+            border: 2px solid var(--primary) !important;
+            background: #e0e7ff !important;
+        }
+
         /* Breadcrumb styling */
         nav[aria-label="breadcrumb"] ul {
             display: flex;
@@ -242,6 +312,7 @@
             <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Overview</a></li>
             <li><a href="/velocity" class="{% if request.url.path == '/velocity' %}active{% endif %}">Velocity</a></li>
             <li><a href="/cycle-time" class="{% if request.url.path == '/cycle-time' %}active{% endif %}">Cycle Time</a></li>
+            <li><a href="/interventions" class="{% if request.url.path == '/interventions' %}active{% endif %}">Interventions</a></li>
         </ul>
     </nav>
     <main class="container">
