@@ -12,6 +12,80 @@ from .config import Config
 logger = logging.getLogger(__name__)
 
 
+# Patterns that indicate system-generated messages, not human input
+SYSTEM_MESSAGE_PATTERNS = [
+    "This session is being continued from a previous conversation",
+    "```You (This Message)",
+    "The summary below covers the earlier portion",
+    "<system-reminder>",
+    "Background bash ",
+    "has new output:",
+]
+
+
+def is_human_intervention(msg: dict) -> bool:
+    """Check if a message is a genuine human intervention.
+
+    Filters out:
+    - Non-user messages (unless message_type not present, assumes pre-filtered)
+    - Agent messages (sub-agents)
+    - Sidechain messages (agent prompts)
+    - Meta/system messages
+    - Tool results
+    - XML-tagged content (system messages, tool output)
+    - System-generated messages (compaction, reminders, etc.)
+    - Empty messages
+
+    Args:
+        msg: Message dict with keys like 'message_type', 'agent_id',
+             'is_sidechain', 'is_meta', 'content_type', 'content'
+
+    Returns:
+        True if this is a genuine human-typed message
+    """
+    # Must be a user message (if message_type present)
+    msg_type = msg.get("message_type")
+    if msg_type is not None and msg_type != "user":
+        return False
+    # Skip agent messages
+    if msg.get("agent_id"):
+        return False
+    # Skip sidechain messages (agent prompts)
+    if msg.get("is_sidechain") == "true" or msg.get("is_sidechain") is True:
+        return False
+    # Skip meta/system messages
+    if msg.get("is_meta") == "true" or msg.get("is_meta") is True:
+        return False
+    # Skip tool results
+    if msg.get("content_type") == "tool_result":
+        return False
+
+    content = msg.get("content", "") or ""
+    # Skip XML-tagged content (system messages, tool output)
+    if content.startswith("<"):
+        return False
+    # Skip system-generated messages
+    if any(pattern in content for pattern in SYSTEM_MESSAGE_PATTERNS):
+        return False
+    # Skip empty messages
+    if not content.strip():
+        return False
+
+    return True
+
+
+# SQL fragment for filtering human interventions in aggregate queries
+# Note: This is a simplified version - some pattern matching is done in Python
+HUMAN_INTERVENTION_SQL_FILTER = """
+    raw_json->>'type' = 'user'
+    AND raw_json->>'agentId' IS NULL
+    AND COALESCE(raw_json->>'isSidechain', 'false') != 'true'
+    AND COALESCE(raw_json->>'isMeta', 'false') != 'true'
+    AND COALESCE(raw_json->'message'->'content'->0->>'type', '') != 'tool_result'
+    AND LEFT(COALESCE(raw_json->'message'->'content'#>>'{}', raw_json->>'content', ''), 1) != '<'
+"""
+
+
 class DatabaseClient:
     """Client for dashboard database operations."""
 
@@ -28,6 +102,7 @@ class DatabaseClient:
                 dbname=self.config.db_name,
                 user=self.config.db_user,
                 password=self.config.db_password,
+                sslmode=self.config.db_sslmode,
             )
             self._conn.autocommit = True
             logger.info(f"Connected to database at {self.config.db_host}")
@@ -407,41 +482,53 @@ class DatabaseClient:
                 if author:
                     query = f"""
                         SELECT
-                            raw_json->>'sessionId' as session_id,
-                            raw_json->>'uuid' as message_uuid,
-                            raw_json->>'agentId' as agent_id,
-                            raw_json->>'isSidechain' as is_sidechain,
-                            raw_json->>'isMeta' as is_meta,
-                            COALESCE(raw_json->'message'->'content'#>>'{{}}', raw_json->>'content', '') as content,
-                            raw_json->'message'->'content'->0->>'type' as content_type,
-                            collected_at as timestamp,
-                            raw_json->>'gitBranch' as git_branch,
-                            collector_host as author
-                        FROM claude_raw_logs
-                        WHERE raw_json->>'type' = 'user'
-                          AND collected_at > NOW() - INTERVAL '{days} days'
-                          AND collector_host = %s
-                        ORDER BY collected_at DESC
+                            cl.raw_json->>'sessionId' as session_id,
+                            cl.raw_json->>'uuid' as message_uuid,
+                            cl.raw_json->>'agentId' as agent_id,
+                            cl.raw_json->>'isSidechain' as is_sidechain,
+                            cl.raw_json->>'isMeta' as is_meta,
+                            COALESCE(cl.raw_json->'message'->'content'#>>'{{}}', cl.raw_json->>'content', '') as content,
+                            cl.raw_json->'message'->'content'->0->>'type' as content_type,
+                            cl.collected_at as timestamp,
+                            cl.raw_json->>'gitBranch' as git_branch,
+                            cl.collector_host as author,
+                            COALESCE(
+                                pr.repo_full_name,
+                                -- Extract last 2 path components from cwd as fallback repo name
+                                (regexp_match(cl.raw_json->>'cwd', '.*/([^/]+/[^/]+)/?$'))[1]
+                            ) as repo_full_name
+                        FROM claude_raw_logs cl
+                        LEFT JOIN github_pull_requests pr ON pr.head_branch = cl.raw_json->>'gitBranch'
+                        WHERE cl.raw_json->>'type' = 'user'
+                          AND cl.collected_at > NOW() - INTERVAL '{days} days'
+                          AND cl.collector_host = %s
+                        ORDER BY cl.collected_at DESC
                         LIMIT {limit * 5}
                     """
                     params = (author,)
                 else:
                     query = f"""
                         SELECT
-                            raw_json->>'sessionId' as session_id,
-                            raw_json->>'uuid' as message_uuid,
-                            raw_json->>'agentId' as agent_id,
-                            raw_json->>'isSidechain' as is_sidechain,
-                            raw_json->>'isMeta' as is_meta,
-                            COALESCE(raw_json->'message'->'content'#>>'{{}}', raw_json->>'content', '') as content,
-                            raw_json->'message'->'content'->0->>'type' as content_type,
-                            collected_at as timestamp,
-                            raw_json->>'gitBranch' as git_branch,
-                            collector_host as author
-                        FROM claude_raw_logs
-                        WHERE raw_json->>'type' = 'user'
-                          AND collected_at > NOW() - INTERVAL '{days} days'
-                        ORDER BY collected_at DESC
+                            cl.raw_json->>'sessionId' as session_id,
+                            cl.raw_json->>'uuid' as message_uuid,
+                            cl.raw_json->>'agentId' as agent_id,
+                            cl.raw_json->>'isSidechain' as is_sidechain,
+                            cl.raw_json->>'isMeta' as is_meta,
+                            COALESCE(cl.raw_json->'message'->'content'#>>'{{}}', cl.raw_json->>'content', '') as content,
+                            cl.raw_json->'message'->'content'->0->>'type' as content_type,
+                            cl.collected_at as timestamp,
+                            cl.raw_json->>'gitBranch' as git_branch,
+                            cl.collector_host as author,
+                            COALESCE(
+                                pr.repo_full_name,
+                                -- Extract last 2 path components from cwd as fallback repo name
+                                (regexp_match(cl.raw_json->>'cwd', '.*/([^/]+/[^/]+)/?$'))[1]
+                            ) as repo_full_name
+                        FROM claude_raw_logs cl
+                        LEFT JOIN github_pull_requests pr ON pr.head_branch = cl.raw_json->>'gitBranch'
+                        WHERE cl.raw_json->>'type' = 'user'
+                          AND cl.collected_at > NOW() - INTERVAL '{days} days'
+                        ORDER BY cl.collected_at DESC
                         LIMIT {limit * 5}
                     """
                     params = ()
@@ -449,44 +536,13 @@ class DatabaseClient:
                 cur.execute(query, params)
                 candidates = [dict(row) for row in cur.fetchall()]
 
-                # Python-side filtering (faster than regex in SQL)
-                # Patterns that indicate system-generated messages, not human input
-                system_patterns = [
-                    "This session is being continued from a previous conversation",
-                    "```You (This Message)",
-                    "The summary below covers the earlier portion",
-                    "<system-reminder>",
-                    "Background bash ",
-                    "has new output:",
-                ]
-
+                # Python-side filtering using shared function
                 messages = []
                 for msg in candidates:
-                    # Skip agent messages
-                    if msg.get("agent_id"):
-                        continue
-                    # Skip sidechain messages (agent prompts)
-                    if msg.get("is_sidechain") == "true":
-                        continue
-                    # Skip meta/system messages
-                    if msg.get("is_meta") == "true":
-                        continue
-                    # Skip tool results
-                    if msg.get("content_type") == "tool_result":
-                        continue
-                    content = msg.get("content", "") or ""
-                    # Skip XML-tagged content (system messages, tool output)
-                    if content.startswith("<"):
-                        continue
-                    # Skip system-generated messages (compaction, reminders, etc.)
-                    if any(pattern in content for pattern in system_patterns):
-                        continue
-                    # Skip empty messages
-                    if not content.strip():
-                        continue
-                    messages.append(msg)
-                    if len(messages) >= limit:
-                        break
+                    if is_human_intervention(msg):
+                        messages.append(msg)
+                        if len(messages) >= limit:
+                            break
 
                 # Context will be loaded on-demand via separate endpoint
                 for msg in messages:
@@ -552,6 +608,167 @@ class DatabaseClient:
         except psycopg2.Error as e:
             logger.error(f"Failed to fetch message context: {e}")
             return {"context_before": [], "context_after": []}
+
+    def get_interventions_by_pr(
+        self,
+        days: int = 30,
+        repo: str | None = None,
+        author: str | None = None,
+    ) -> list[dict]:
+        """Get human intervention counts and timing aggregated by PR.
+
+        Returns list of PRs with:
+        - pr info (repo, number, title, author)
+        - intervention_count: number of human interventions
+        - claude_hours: total Claude session time
+        - interventions_per_hour: intervention_count / claude_hours
+        """
+        self.ensure_connected()
+
+        try:
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Step 1: Get PRs (fast, small table)
+                query = f"""
+                    SELECT repo_full_name, pr_number, title, author_login, head_branch,
+                           created_at, merged_at
+                    FROM github_pull_requests
+                    WHERE created_at > NOW() - INTERVAL '{days} days'
+                      AND head_branch IS NOT NULL
+                """
+                params: list[Any] = []
+
+                if repo:
+                    query += " AND repo_full_name = %s"
+                    params.append(repo)
+                if author:
+                    query += " AND author_login = %s"
+                    params.append(author)
+
+                query += " ORDER BY created_at DESC LIMIT 50"
+                cur.execute(query, params if params else None)
+                prs = [dict(row) for row in cur.fetchall()]
+
+                if not prs:
+                    return []
+
+                branches = list(set(pr["head_branch"] for pr in prs if pr["head_branch"]))
+                if not branches:
+                    return []
+
+                # Step 2: Get both timing stats and intervention counts in one query
+                cur.execute(
+                    f"""
+                    SELECT
+                        raw_json->>'gitBranch' as branch,
+                        COUNT(DISTINCT raw_json->>'sessionId') as session_count,
+                        MIN((raw_json->>'timestamp')::timestamptz) as first_ts,
+                        MAX((raw_json->>'timestamp')::timestamptz) as last_ts,
+                        COUNT(*) FILTER (WHERE {HUMAN_INTERVENTION_SQL_FILTER}) as intervention_count
+                    FROM claude_raw_logs
+                    WHERE raw_json->>'gitBranch' = ANY(%s)
+                    GROUP BY raw_json->>'gitBranch'
+                    """,
+                    (branches,),
+                )
+                branch_stats = {row["branch"]: row for row in cur.fetchall()}
+
+                # Calculate hours per branch (simplified: total span, not sum of sessions)
+                branch_hours: dict[str, float] = {}
+                branch_counts: dict[str, int] = {}
+                for branch, stats in branch_stats.items():
+                    if stats["first_ts"] and stats["last_ts"]:
+                        hours = (stats["last_ts"] - stats["first_ts"]).total_seconds() / 3600.0
+                        branch_hours[branch] = hours
+                    branch_counts[branch] = stats["intervention_count"]
+
+            # Build results
+            results = []
+            for pr in prs:
+                branch = pr["head_branch"]
+                intervention_count = branch_counts.get(branch, 0)
+                claude_hours = round(branch_hours.get(branch, 0), 2)
+
+                # Calculate average minutes between interventions
+                # If N interventions over T hours, avg time between = T*60 / N minutes
+                avg_minutes_between = (
+                    round((claude_hours * 60) / intervention_count, 1)
+                    if intervention_count > 0 and claude_hours > 0
+                    else None
+                )
+
+                results.append({
+                    "repo_full_name": pr["repo_full_name"],
+                    "pr_number": pr["pr_number"],
+                    "title": pr["title"],
+                    "author_login": pr["author_login"],
+                    "head_branch": pr["head_branch"],
+                    "created_at": pr["created_at"],
+                    "merged_at": pr["merged_at"],
+                    "intervention_count": intervention_count,
+                    "claude_hours": claude_hours,
+                    "avg_minutes_between": avg_minutes_between,
+                })
+
+            return results
+
+        except psycopg2.Error as e:
+            logger.error(f"Failed to fetch interventions by PR: {e}")
+            return []
+
+    def get_interventions_for_branch(self, branch: str) -> list[dict]:
+        """Get human intervention messages for a specific branch.
+
+        Used for on-demand loading when expanding a PR row.
+        """
+        self.ensure_connected()
+
+        try:
+            with self._conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Get session IDs for this branch
+                cur.execute(
+                    """
+                    SELECT DISTINCT raw_json->>'sessionId' as session_id
+                    FROM claude_raw_logs
+                    WHERE raw_json->>'gitBranch' = %s
+                    """,
+                    (branch,),
+                )
+                session_ids = [row["session_id"] for row in cur.fetchall()]
+
+                if not session_ids:
+                    return []
+
+                # Get user messages from those sessions
+                cur.execute(
+                    """
+                    SELECT
+                        raw_json->>'sessionId' as session_id,
+                        raw_json->>'uuid' as message_uuid,
+                        raw_json->>'agentId' as agent_id,
+                        raw_json->>'isSidechain' as is_sidechain,
+                        raw_json->>'isMeta' as is_meta,
+                        COALESCE(raw_json->'message'->'content'#>>'{}', raw_json->>'content', '') as content,
+                        raw_json->'message'->'content'->0->>'type' as content_type,
+                        (raw_json->>'timestamp')::timestamptz as timestamp,
+                        raw_json->>'gitBranch' as git_branch,
+                        collector_host as author
+                    FROM claude_raw_logs
+                    WHERE raw_json->>'sessionId' = ANY(%s)
+                      AND raw_json->>'type' = 'user'
+                    ORDER BY (raw_json->>'timestamp')::timestamptz
+                    """,
+                    (session_ids,),
+                )
+                candidates = [dict(row) for row in cur.fetchall()]
+
+            # Filter using shared function
+            interventions = [msg for msg in candidates if is_human_intervention(msg)]
+
+            return interventions
+
+        except psycopg2.Error as e:
+            logger.error(f"Failed to fetch interventions for branch {branch}: {e}")
+            return []
 
     def get_collectors(self) -> list[str]:
         """Get list of unique collector hosts (authors/machines)."""

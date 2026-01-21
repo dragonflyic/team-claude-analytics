@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Interventions by PR - Developer Productivity Dashboard{% endblock %}
+
+{% block content %}
+<h1>Interventions by PR</h1>
+<p class="secondary">Human interventions aggregated by pull request - longer time between = more autonomous Claude sessions</p>
+
+<form class="filters" method="get">
+    <div>
+        <label for="repo">Repository</label>
+        <select name="repo" id="repo">
+            <option value="">All Repositories</option>
+            {% for r in repos %}
+            <option value="{{ r }}" {% if selected_repo == r %}selected{% endif %}>{{ r }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="author">Author</label>
+        <select name="author" id="author">
+            <option value="">All Authors</option>
+            {% for a in authors %}
+            <option value="{{ a }}" {% if selected_author == a %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="days">Time Range</label>
+        <select name="days" id="days">
+            <option value="7" {% if days == 7 %}selected{% endif %}>Last 7 days</option>
+            <option value="14" {% if days == 14 %}selected{% endif %}>Last 14 days</option>
+            <option value="30" {% if days == 30 %}selected{% endif %}>Last 30 days</option>
+            <option value="90" {% if days == 90 %}selected{% endif %}>Last 90 days</option>
+        </select>
+    </div>
+</form>
+
+{% if db_error %}
+<article class="pico-background-red-500">
+    <p>Database error: {{ db_error }}</p>
+</article>
+{% else %}
+
+<div class="metrics-grid">
+    <div class="card">
+        <h3>PRs with Claude</h3>
+        <div class="value">{{ summary.total_prs }}</div>
+    </div>
+    <div class="card">
+        <h3>Total Interventions</h3>
+        <div class="value">{{ summary.total_interventions }}</div>
+    </div>
+    <div class="card">
+        <h3>Avg per PR</h3>
+        <div class="value">{{ summary.avg_interventions }}</div>
+    </div>
+    <div class="card">
+        <h3>Avg Time Between</h3>
+        <div class="value">{% if summary.avg_minutes_between %}{{ summary.avg_minutes_between }}m{% else %}N/A{% endif %}</div>
+        <small class="secondary">minutes between interventions</small>
+    </div>
+</div>
+
+{% if prs %}
+<table>
+    <thead>
+        <tr>
+            <th>PR</th>
+            <th>Author</th>
+            <th>Interventions</th>
+            <th>Claude Hours</th>
+            <th>Avg Time Between</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for pr in prs %}
+        <tr>
+            <td class="pr-title" title="{{ pr.title }}">
+                <a href="/pr/{{ pr.repo_full_name }}/{{ pr.pr_number }}">{{ pr.repo_full_name }}#{{ pr.pr_number }}</a>
+                {{ pr.title[:50] }}{% if pr.title|length > 50 %}...{% endif %}
+            </td>
+            <td>{{ pr.author_login }}</td>
+            <td><strong>{{ pr.intervention_count }}</strong></td>
+            <td>{{ pr.claude_hours }}h</td>
+            <td>{% if pr.avg_minutes_between %}{{ pr.avg_minutes_between }}m{% else %}N/A{% endif %}</td>
+            <td>
+                {% if pr.intervention_count > 0 %}
+                <details class="pr-interventions-details"
+                         hx-get="/partials/pr-interventions/{{ pr.head_branch }}"
+                         hx-trigger="toggle once"
+                         hx-target="find .interventions-content"
+                         hx-swap="innerHTML">
+                    <summary>View ({{ pr.intervention_count }})</summary>
+                    <div class="interventions-content">
+                        <p class="secondary">Loading...</p>
+                    </div>
+                </details>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<article>
+    <p>No PRs found in the selected time range.</p>
+</article>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Convert UTC timestamps to local time
+document.querySelectorAll('time[data-utc]').forEach(function(el) {
+    const utc = el.getAttribute('data-utc');
+    if (utc) {
+        const date = new Date(utc);
+        el.textContent = date.toLocaleString();
+    }
+});
+</script>
+{% endblock %}

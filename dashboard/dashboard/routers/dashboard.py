@@ -146,7 +146,18 @@ async def cycle_time_view(
             "cycle_time.html",
             {
                 "request": request,
-                "cycle_time": {"count": 0, "prs": []},
+                "cycle_time": {
+                    "count": 0,
+                    "avg_hours_before_first_commit": None,
+                    "avg_hours_before_pr": None,
+                    "avg_hours_to_first_review": None,
+                    "avg_hours_to_approval": None,
+                    "avg_hours_to_merge": None,
+                    "avg_total_hours": None,
+                    "prs_without_review_count": 0,
+                    "prs_without_review_pct": 0,
+                    "prs": [],
+                },
                 "repos": [],
                 "authors": [],
                 "selected_repo": repo,
@@ -215,6 +226,73 @@ async def interventions_view(
             "db_error": None,
             "extract_content_text": metrics.extract_content_text,
             "get_display_role": metrics.get_display_role,
+        },
+    )
+
+
+@router.get("/interventions-by-pr", response_class=HTMLResponse)
+async def interventions_by_pr_view(
+    request: Request,
+    repo: str | None = None,
+    author: str | None = None,
+    days: int = Query(30, ge=1, le=365),
+    db: DatabaseClient | None = Depends(get_db),
+    db_error: str | None = Depends(get_db_error),
+):
+    """Human interventions aggregated by PR."""
+    if db is None:
+        return templates.TemplateResponse(
+            "interventions_by_pr.html",
+            {
+                "request": request,
+                "prs": [],
+                "repos": [],
+                "authors": [],
+                "selected_repo": repo,
+                "selected_author": author,
+                "days": days,
+                "db_error": db_error,
+                "summary": {
+                    "total_prs": 0,
+                    "total_interventions": 0,
+                    "avg_interventions": 0,
+                    "avg_minutes_between": None,
+                },
+            },
+        )
+
+    prs = db.get_interventions_by_pr(days=days, repo=repo, author=author)
+    repos = db.get_repos()
+    authors = db.get_authors()
+
+    # Calculate summary metrics
+    total_prs = len(prs)
+    total_interventions = sum(pr["intervention_count"] for pr in prs)
+    avg_interventions = total_interventions / total_prs if total_prs > 0 else 0
+
+    # Average time between interventions across all PRs
+    times = [pr["avg_minutes_between"] for pr in prs if pr["avg_minutes_between"] is not None]
+    avg_minutes_between = sum(times) / len(times) if times else None
+
+    summary = {
+        "total_prs": total_prs,
+        "total_interventions": total_interventions,
+        "avg_interventions": round(avg_interventions, 1),
+        "avg_minutes_between": round(avg_minutes_between, 1) if avg_minutes_between else None,
+    }
+
+    return templates.TemplateResponse(
+        "interventions_by_pr.html",
+        {
+            "request": request,
+            "prs": prs,
+            "repos": repos,
+            "authors": authors,
+            "selected_repo": repo,
+            "selected_author": author,
+            "days": days,
+            "db_error": None,
+            "summary": summary,
         },
     )
 
@@ -331,5 +409,27 @@ async def partial_summary(
             "request": request,
             "summary": summary,
             "format_hours": format_hours,
+        },
+    )
+
+
+@router.get("/partials/pr-interventions/{branch:path}", response_class=HTMLResponse)
+async def partial_pr_interventions(
+    request: Request,
+    branch: str,
+    db: DatabaseClient | None = Depends(get_db),
+):
+    """Partial template for loading PR interventions on-demand (HTMX)."""
+    if db is None:
+        return HTMLResponse("<p>Database unavailable</p>")
+
+    interventions = db.get_interventions_for_branch(branch)
+
+    return templates.TemplateResponse(
+        "partials/pr_interventions.html",
+        {
+            "request": request,
+            "interventions": interventions,
+            "extract_content_text": metrics.extract_content_text,
         },
     )

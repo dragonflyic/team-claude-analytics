@@ -239,6 +239,12 @@
             font-weight: 600;
             color: var(--primary);
         }
+        .intervention-meta .repo {
+            background: #fef3c7;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
         .intervention-meta .branch {
             background: #e0e7ff;
             padding: 0.15rem 0.5rem;
@@ -284,6 +290,47 @@
             background: #e0e7ff !important;
         }
 
+        /* Interventions by PR page styles */
+        .pr-interventions-details {
+            margin: 0;
+        }
+        .pr-interventions-details summary {
+            cursor: pointer;
+            color: var(--primary);
+            font-size: 0.85rem;
+        }
+        .pr-interventions-list {
+            margin-top: 0.75rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .intervention-item {
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: #f8fafc;
+            border-radius: var(--border-radius);
+            border-left: 3px solid var(--primary);
+        }
+        .intervention-meta-small {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--muted-color);
+            margin-bottom: 0.5rem;
+        }
+        .intervention-meta-small .branch {
+            background: #e0e7ff;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .intervention-content-small {
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            line-height: 1.4;
+        }
+
         /* Breadcrumb styling */
         nav[aria-label="breadcrumb"] ul {
             display: flex;
@@ -313,6 +360,7 @@
             <li><a href="/velocity" class="{% if request.url.path == '/velocity' %}active{% endif %}">Velocity</a></li>
             <li><a href="/cycle-time" class="{% if request.url.path == '/cycle-time' %}active{% endif %}">Cycle Time</a></li>
             <li><a href="/interventions" class="{% if request.url.path == '/interventions' %}active{% endif %}">Interventions</a></li>
+            <li><a href="/interventions-by-pr" class="{% if request.url.path == '/interventions-by-pr' %}active{% endif %}">By PR</a></li>
         </ul>
     </nav>
     <main class="container">

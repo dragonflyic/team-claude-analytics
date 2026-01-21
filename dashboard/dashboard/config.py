@@ -15,6 +15,7 @@ class Config:
     db_name: str
     db_user: str
     db_password: str
+    db_sslmode: str
     github_token: str
     github_repos: list[str]
     sync_interval_minutes: int
@@ -33,6 +34,7 @@ class Config:
             db_name=os.getenv("DB_NAME", "claude_logs"),
             db_user=os.getenv("DB_USER", "claude_admin"),
             db_password=os.getenv("DB_PASSWORD", ""),
+            db_sslmode=os.getenv("DB_SSLMODE", "require"),
             github_token=os.getenv("GITHUB_TOKEN", ""),
             github_repos=repos,
             sync_interval_minutes=int(os.getenv("SYNC_INTERVAL_MINUTES", "15")),

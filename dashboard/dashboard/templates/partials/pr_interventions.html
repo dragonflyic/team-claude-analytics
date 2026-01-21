@@ -1,0 +1,28 @@
+{% if interventions %}
+<div class="pr-interventions-list">
+    {% for msg in interventions %}
+    <div class="intervention-item">
+        <div class="intervention-meta-small">
+            <time data-utc="{{ msg.timestamp | utc_iso }}">{{ msg.timestamp.strftime('%Y-%m-%d %H:%M') if msg.timestamp else '' }}</time>
+            <span class="branch">{{ msg.git_branch or 'unknown' }}</span>
+        </div>
+        <div class="intervention-content-small">
+            {{ extract_content_text(msg.content)[:300] }}{% if extract_content_text(msg.content)|length > 300 %}...{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<script>
+// Convert UTC timestamps to local time for newly loaded content
+document.querySelectorAll('time[data-utc]').forEach(function(el) {
+    const utc = el.getAttribute('data-utc');
+    if (utc && !el.dataset.converted) {
+        const date = new Date(utc);
+        el.textContent = date.toLocaleString();
+        el.dataset.converted = 'true';
+    }
+});
+</script>
+{% else %}
+<p class="secondary">No interventions found for this branch.</p>
+{% endif %}

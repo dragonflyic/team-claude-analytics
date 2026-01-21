@@ -45,6 +45,9 @@
         <header>
             <div class="intervention-meta">
                 <span class="author">{{ msg.author }}</span>
+                {% if msg.repo_full_name %}
+                <span class="repo" title="Repository">{{ msg.repo_full_name }}</span>
+                {% endif %}
                 <span class="branch" title="Git branch">{{ msg.git_branch or 'unknown branch' }}</span>
                 <time data-utc="{{ msg.timestamp | utc_iso }}">{{ msg.timestamp.strftime('%Y-%m-%d %H:%M') }}</time>
             </div>

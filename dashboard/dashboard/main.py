@@ -4,7 +4,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
@@ -20,11 +20,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def run_sync(config: Config, db: DatabaseClient):
-    """Run GitHub sync (called by scheduler)."""
+def run_sync(config: Config, db: DatabaseClient):
+    """Run GitHub sync (called by scheduler in background thread)."""
     logger.info("Starting scheduled GitHub sync...")
     try:
-        stats = await sync_all_repos(config, db)
+        # Run the async sync in a new event loop since we're in a background thread
+        stats = asyncio.run(sync_all_repos(config, db))
         logger.info(f"Sync complete: {stats['total_synced']} PRs synced")
     except Exception as e:
         logger.error(f"Sync failed: {e}")
@@ -47,8 +48,8 @@ async def lifespan(app: FastAPI):
         db.init_schema()
         app.state.db = db
 
-        # Start background scheduler
-        scheduler = AsyncIOScheduler()
+        # Start background scheduler (runs jobs in separate threads to avoid blocking)
+        scheduler = BackgroundScheduler()
 
         # Schedule initial sync to run shortly after startup (non-blocking)
         if config.github_token and config.github_repos:
