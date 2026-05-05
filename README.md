@@ -5,15 +5,14 @@ Shared team analytics for Claude usage. Collects Claude chat logs from developer
 ## Components
 
 - **Collector**: Python service that watches `~/.claude/projects` for log changes and streams entries to PostgreSQL
-- **Terraform**: Infrastructure as code for provisioning RDS PostgreSQL on AWS
+- **Dashboard**: FastAPI webapp showing PR cycle time and Claude usage analytics
 
 ## Prerequisites
 
 - Python 3.12+
 - Poetry
 - Docker (for containerized deployment)
-- Terraform 1.0+ (for infrastructure)
-- AWS CLI configured with credentials
+- A PostgreSQL database the collector and dashboard can reach
 
 ## Quick Start (for developers)
 
@@ -27,35 +26,16 @@ It will prompt for the database password (ask your team lead).
 
 ---
 
-## Infrastructure Setup (for admins)
+## Running the Collector
 
-### 1. Provision Infrastructure
-
-```bash
-cd terraform
-
-# Copy and edit variables
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your settings
-
-# Deploy
-terraform init
-terraform plan
-terraform apply
-```
-
-After deployment, note the RDS endpoint from the outputs.
-
-### 2. Run the Collector
-
-#### Option A: Run Locally with Poetry
+### Option A: Run Locally with Poetry
 
 ```bash
 cd collector
 poetry install
 
 # Set environment variables
-export DB_HOST=your-rds-endpoint.region.rds.amazonaws.com
+export DB_HOST=your-postgres-host
 export DB_PORT=5432
 export DB_NAME=claude_logs
 export DB_USER=claude_admin
@@ -65,25 +45,12 @@ export DB_PASSWORD=your-password
 poetry run collector
 ```
 
-#### Option B: Run with Docker (from public ECR)
-
-```bash
-docker run -d \
-  --name claude-collector \
-  --restart unless-stopped \
-  -e DB_HOST=your-rds-endpoint.region.rds.amazonaws.com \
-  -e DB_PASSWORD=your-password \
-  -v ~/.claude/projects:/claude-projects:ro \
-  -v ~/.claude-collector:/state \
-  public.ecr.aws/z7t5p0k6/claude-log-collector:latest
-```
-
-#### Option C: Run with Docker Compose (local build)
+### Option B: Run with Docker Compose (local build)
 
 ```bash
 # Copy and edit environment file
 cp .env.example .env
-# Edit .env with your RDS credentials
+# Edit .env with your DB credentials
 
 # Build and run
 docker-compose up -d
@@ -105,10 +72,6 @@ docker-compose logs -f
 | `DB_PASSWORD` | Database password | (required) |
 | `COLLECTOR_HOST` | Identifier for this machine | hostname |
 | `CLAUDE_PROJECTS_PATH` | Path to Claude projects | `~/.claude/projects` |
-
-### Terraform Variables
-
-See `terraform/terraform.tfvars.example` for available configuration options.
 
 ## Database Schema
 
@@ -147,7 +110,7 @@ poetry run collector
                                  │
                                  ▼
                     ┌────────────────────────┐
-                    │   AWS RDS PostgreSQL   │
+                    │   PostgreSQL Database  │
                     │   (Shared Database)    │
                     └────────────────────────┘
 ```
